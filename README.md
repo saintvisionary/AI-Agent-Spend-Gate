@@ -18,7 +18,8 @@
   <a href="#what-it-stops">What it stops</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#based-on-american-express-ace">Based on ACE</a> ·
-  <a href="#design-decisions">Design decisions</a>
+  <a href="#design-decisions">Design decisions</a> ·
+  <a href="#reference-architecture-on-aws">AWS architecture</a>
 </p>
 
 <!--
@@ -49,6 +50,52 @@ An agent that can spend money needs the same controls a person would have: limit
 ---
 
 ## How it works
+
+### Where the gate sits
+
+The agent works in an untrusted zone. The money is in a protected zone. The gate sits on the trust boundary between them, and it's the only path from one to the other.
+
+```mermaid
+flowchart LR
+    subgraph U["UNTRUSTED ZONE: the agent"]
+        direction TB
+        INV["Inventory + market price feed"]
+        AG["AI purchasing agent<br/>decides WHAT to buy"]
+        INV --> AG
+    end
+
+    subgraph C["CONTROL ZONE: the trust boundary"]
+        direction TB
+        P["Purchasing policy<br/>allowlists + $500 limit"]
+        G["Spend Gate<br/>check_request()<br/>decides IF it's allowed"]
+        H["Human approver<br/>purchases over $500"]
+        P --> G
+        G -->|NEEDS APPROVAL| H
+    end
+
+    subgraph R["PROTECTED ZONE: the money"]
+        direction TB
+        PAY["Company card / payment"]
+        M["Merchants<br/>Staples, Office Depot"]
+        PAY --> M
+    end
+
+    AG -->|purchase request| G
+    G -->|APPROVED only| PAY
+    G -.->|BLOCKED + reason| AG
+    H -->|signs off| PAY
+
+    classDef built fill:#2ea44f,stroke:#1a7f37,color:#ffffff
+    classDef context fill:#f6f8fa,stroke:#8c959f,color:#24292f
+    class G,P built
+    class INV,AG,H,PAY,M context
+
+    style U fill:none,stroke:#cf222e,stroke-width:2px,stroke-dasharray:6 4
+    style C fill:none,stroke:#2ea44f,stroke-width:2px
+    style R fill:none,stroke:#0969da,stroke-width:2px,stroke-dasharray:6 4
+```
+
+🟩 **Green:** built in this repo · ⬜ **Gray:** systems in the environment around it
 
 ### The request flow
 
@@ -222,6 +269,19 @@ Problems I hit while building this, and how I fixed them, are in **[JOURNAL.md](
 
 ---
 
+## Reference architecture on AWS
+
+How the gate would run in production. A scheduled Lambda agent checks inventory and market prices, then drops a purchase intent on an SQS queue. The Spend Gate runs on ECS Fargate in a private subnet, loads its policy from S3, and is the only component allowed to read the payment credential. Large purchases go through a Step Functions approval workflow, where a human signs in with MFA. Every decision streams through CloudWatch and Firehose to Splunk.
+
+<p align="center">
+  <img src="assets/architecture.png" alt="Reference architecture on AWS: Lambda purchasing agent, SQS queue, Spend Gate on ECS Fargate, S3 policy, Secrets Manager, Step Functions approval, IAM Identity Center, CloudWatch, Firehose and Splunk" width="100%">
+</p>
+
+> [!NOTE]
+> The decision logic (`guard.py`) is built in this repo. The AWS services show the environment it's designed for. The key control: the agent's IAM role can only send to the queue, so even a compromised agent has no path to the money except through the gate.
+
+---
+
 ## Tech stack
 
 | Tool | Use | Control it shows |
@@ -235,3 +295,4 @@ Problems I hit while building this, and how I fixed them, are in **[JOURNAL.md](
 |:---|:---|
 | [`guard.py`](guard.py) | The rules engine, interactive prompt and demo requests |
 | [`JOURNAL.md`](JOURNAL.md) | Problems and fixes, and design decisions |
+| [`assets/architecture.drawio`](assets/architecture.drawio) | Editable source of the AWS architecture diagram (open in draw.io) |

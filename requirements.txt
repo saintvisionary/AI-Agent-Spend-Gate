@@ -1,0 +1,5 @@
+# Packages the agent needs. Install with: pip install -r requirements.txt
+strands-agents==1.61.1    # the agent framework (tools, interventions)
+strands-decider==0.2.0    # runs the Decider 2B server (pulls in PyTorch)
+boto3==1.43.114           # AWS SDK, used to call Amazon Bedrock
+ollama==0.6.3            # optional: only for LLM_PROVIDER=ollama

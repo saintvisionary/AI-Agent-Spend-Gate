@@ -24,8 +24,8 @@ import math
 # Allowlist: only these categories can be bought. Anything else is blocked.
 ALLOWED_CATEGORIES = ["office supplies", "advertising"]
 
-# Allowlist: only these vendors are approved.
-APPROVED_VENDORS = ["Staples", "Office Depot"]
+# Allowlist: only these vendors are approved. These are made-up names.
+APPROVED_VENDORS = ["Northbeam Office Supply", "Paperleaf Co"]
 
 # Purchases over this amount need a human to approve them.
 APPROVAL_OVER = 500
@@ -43,6 +43,10 @@ def check_request(vendor, category, amount):
     # Rule 0a: input validation. The amount must be a number.
     # isinstance() asks "is this value an int or a float?"
     # Without this check, text like "86" would crash the comparisons below.
+    # True and False count as ints in Python (True == 1), so they're
+    # blocked separately. An LLM sending "amount": true must not be approved.
+    if isinstance(amount, bool):
+        return "BLOCKED", "amount must be a number"
     if not isinstance(amount, (int, float)):
         return "BLOCKED", "amount must be a number"
 
@@ -57,12 +61,17 @@ def check_request(vendor, category, amount):
     if amount <= 0:
         return "BLOCKED", "amount must be more than $0"
 
+    # Rule 0d: input validation. Money has at most 2 decimal places.
+    # round(amount, 2) keeps 2 decimals, so 0.001 becomes 0.0 and doesn't match.
+    if round(amount, 2) != amount:
+        return "BLOCKED", "amount can't have fractions of a cent"
+
     # Rule 1: category must be on the allowlist.
     if category not in ALLOWED_CATEGORIES:
         return "BLOCKED", f"category '{category}' is not allowed"
 
     # Rule 2: vendor must be on the allowlist.
-    # Matching is exact, so "staples" (lowercase) is blocked. That fails
+    # Matching is exact, so "paperleaf co" (lowercase) is blocked. That fails
     # closed: an unexpected value is denied, never allowed.
     if vendor not in APPROVED_VENDORS:
         return "BLOCKED", f"vendor '{vendor}' is not approved"
@@ -111,6 +120,8 @@ def parse_amount(text):
 # Example: -5 becomes "-$5" instead of "$-5".
 # Values that aren't real amounts (text, NaN, infinity) are shown in quotes.
 def format_money(amount):
+    if isinstance(amount, bool):
+        return f"'{amount}'"
     if not isinstance(amount, (int, float)):
         return f"'{amount}'"
     if not math.isfinite(amount):
@@ -134,17 +145,20 @@ def show_decision(vendor, category, amount):
 # ---------------------------------------------------------------
 
 def run_demo():
-    show_decision("Staples", "office supplies", 86)           # normal purchase
-    show_decision("Staples", "office supplies", 900)          # over $500
-    show_decision("Staples", "gift cards", 200)               # category not allowed
+    vendor = "Northbeam Office Supply"
+    show_decision(vendor, "office supplies", 86)              # normal purchase
+    show_decision(vendor, "office supplies", 900)             # over $500
+    show_decision(vendor, "gift cards", 200)                  # category not allowed
     show_decision("Shady Deals LLC", "office supplies", 50)   # unknown vendor
-    show_decision("staples", "office supplies", 50)           # wrong capitalization
-    show_decision("Staples", "office supplies", 500)          # exactly the limit
-    show_decision("Staples", "office supplies", 500.01)       # one cent over
-    show_decision("Staples", "office supplies", 0)            # zero dollars
-    show_decision("Staples", "office supplies", -5)           # negative amount
-    show_decision("Staples", "office supplies", "86")         # text, not a number
-    show_decision("Staples", "office supplies", float("nan")) # not a number (NaN)
+    show_decision("northbeam office supply", "office supplies", 50)  # wrong capitalization
+    show_decision(vendor, "office supplies", 500)             # exactly the limit
+    show_decision(vendor, "office supplies", 500.01)          # one cent over
+    show_decision(vendor, "office supplies", 0)               # zero dollars
+    show_decision(vendor, "office supplies", -5)              # negative amount
+    show_decision(vendor, "office supplies", "86")            # text, not a number
+    show_decision(vendor, "office supplies", float("nan"))    # not a number (NaN)
+    show_decision(vendor, "office supplies", True)            # True counts as 1 in Python
+    show_decision(vendor, "office supplies", 0.001)           # a fraction of a cent
 
 
 # ---------------------------------------------------------------

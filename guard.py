@@ -39,7 +39,9 @@ APPROVAL_OVER = 500
 # Checks run in order. Every check that can BLOCK comes before
 # anything that can APPROVE, so a request can't skip a rule.
 # Returns two values: the decision and a short reason.
-def check_request(vendor, category, amount):
+# remaining_budget is optional: the department's money left this period.
+# Leave it out (None) to skip the budget rule, like the demo below does.
+def check_request(vendor, category, amount, remaining_budget=None):
     # Rule 0a: input validation. The amount must be a number.
     # isinstance() asks "is this value an int or a float?"
     # Without this check, text like "86" would crash the comparisons below.
@@ -75,6 +77,12 @@ def check_request(vendor, category, amount):
     # closed: an unexpected value is denied, never allowed.
     if vendor not in APPROVED_VENDORS:
         return "BLOCKED", f"vendor '{vendor}' is not approved"
+
+    # Rule 2b: the department must have the money left.
+    # This is a BLOCK, so it runs before Rule 3: a human is never asked
+    # to approve spending the department doesn't have.
+    if remaining_budget is not None and amount > remaining_budget:
+        return "BLOCKED", f"over remaining budget (${remaining_budget:.2f} left)"
 
     # Rule 3: large purchases go to a human (four-eyes approval).
     if amount > APPROVAL_OVER:

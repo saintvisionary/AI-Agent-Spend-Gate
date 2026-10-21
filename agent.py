@@ -13,9 +13,12 @@
 #
 # How to run (two terminals):
 #     strands-decider serve StrandsAgents/strands-decider-2B-qwen3.5-v1-2610 --port 8099
+#     python agent.py
+# That starts an interactive session: pick your department, then type
+# requests, "report" (budgets and orders), "inventory", "help" or "quit".
+#
+# Or run one scenario and exit: restock, rush, preferred, injection, guess, bulk.
 #     python agent.py restock
-# Scenarios: restock, rush, preferred, injection, guess, bulk.
-# Or type your own request in quotes:
 #     python agent.py "order 3 boxes of printer paper"
 #
 # The LLM: Amazon Bedrock by default. To use a local Ollama model instead
@@ -27,6 +30,7 @@ from strands import Agent, tool
 from strands.models import BedrockModel
 
 from decision_pattern.spend_guardrail import SpendGuardrail
+import ledger
 from guard import APPROVED_VENDORS, check_request
 
 # Which LLM to use: "bedrock" or "ollama".
@@ -40,6 +44,10 @@ REGION = "us-east-1"
 # Set OLLAMA_MODEL to try a different one.
 OLLAMA_MODEL_ID = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
 OLLAMA_HOST = "http://127.0.0.1:11434"
+
+# Who is using the agent right now. Set at sign-in (chat() asks for it),
+# read by place_order. The LLM can't change it: no tool writes to it.
+SESSION = {"department": "operations"}
 
 
 # ---------------------------------------------------------------
@@ -146,9 +154,34 @@ def get_price_quotes(item: str) -> str:
     return "\n".join(lines)
 
 
+# Price check: the LLM's unit_price is untrusted input. Look up today's
+# quote ourselves and return the problem as text, or None if it matches.
+# In a live run, a small model put the pens price ($5.90) on printer paper;
+# Decider and the rules both let it through, so this is the control that stops it.
+def price_problem(vendor, item, unit_price):
+    quote = PRICE_QUOTES.get(item, {}).get(vendor)
+    if quote is None:
+        return f"there is no price quote for {item} from {vendor}"
+    if not quote["in_stock"]:
+        return f"{vendor} has {item} out of stock"
+    if unit_price != quote["price"]:
+        return f"the quoted price for {item} from {vendor} is ${quote['price']}, not ${unit_price}"
+    return None
+
+
+# Four-eyes approval: over the limit, a person decides, never the LLM.
+# Fail closed: no answer (input closed) counts as "no".
+def ask_approver(quantity, item, amount):
+    try:
+        answer = input(f"Human approver: allow {quantity} x {item} for ${amount}? (y/n): ")
+    except EOFError:
+        answer = "n"
+    return answer.strip().lower() == "y"
+
+
 @tool
 def place_order(vendor: str, item: str, quantity: int, unit_price: float, category: str) -> str:
-    """Place a purchase order. The spending policy decides if it goes through.
+    """Place a purchase order for the user's department. The spending policy decides if it goes through.
 
     Args:
         vendor: The vendor to buy from.
@@ -157,45 +190,35 @@ def place_order(vendor: str, item: str, quantity: int, unit_price: float, catego
         unit_price: Price per unit in US dollars.
         category: Purchase category, for example "office supplies".
     """
-    # Price check: the LLM's unit_price is untrusted input. Look up today's
-    # quote ourselves and refuse if they disagree. In a live run, a small
-    # model put the pens price ($5.90) on printer paper; Decider and the
-    # rules both let it through, so this check is the control that stops it.
-    quotes = PRICE_QUOTES.get(item, {})
-    quote = quotes.get(vendor)
-    if quote is None:
-        print(f"\n[Price check] BLOCKED: no quote on file for {item} from {vendor}")
-        return f"Order blocked: there is no price quote for {item} from {vendor}."
-    if not quote["in_stock"]:
-        print(f"\n[Price check] BLOCKED: {vendor} has {item} out of stock")
-        return f"Order blocked: {vendor} has {item} out of stock."
-    quoted_price = quote["price"]
-    if unit_price != quoted_price:
-        print(f"\n[Price check] BLOCKED: {item} from {vendor} is quoted at ${quoted_price}, not ${unit_price}")
-        return f"Order blocked: the quoted price for {item} from {vendor} is ${quoted_price}, not ${unit_price}."
+    # The department comes from the signed-in user (SESSION), never from
+    # the LLM. Otherwise the agent could charge whichever one has money left.
+    department = SESSION["department"]
+
+    problem = price_problem(vendor, item, unit_price)
+    if problem:
+        print(f"\n[Price check] BLOCKED: {problem}")
+        ledger.audit(department, "price check", vendor, item, quantity, category, "", "BLOCKED", problem)
+        return f"Order blocked: {problem}."
 
     # The code works out the total, not the LLM, so a math slip can't
     # change the amount the policy checks.
     amount = round(quantity * unit_price, 2)
-    decision, reason = check_request(vendor, category, amount)
-    print(f"\n[Spend Gate] {decision} {vendor} ${amount}: {reason}")
+    decision, reason = check_request(vendor, category, amount, ledger.remaining(department))
+    print(f"\n[Spend Gate] {decision} {department} {vendor} ${amount:.2f}: {reason}")
 
-    # Four-eyes approval: over the limit, a person decides, never the LLM.
     if decision == "NEEDS APPROVAL":
-        # Fail closed: no answer (input closed) counts as "no".
-        try:
-            answer = input(f"Human approver: allow {quantity} x {item} for ${amount}? (y/n): ")
-        except EOFError:
-            answer = "n"
-        if answer.strip().lower() == "y":
-            decision = "APPROVED"
-            reason = "approved by a human"
+        if ask_approver(quantity, item, amount):
+            decision, reason = "APPROVED", "approved by a human"
         else:
-            return f"Order rejected by the human approver: {quantity} x {item} for ${amount}."
+            decision, reason = "BLOCKED", "rejected by the human approver"
+    ledger.audit(department, "spend gate", vendor, item, quantity, category, amount, decision, reason)
 
     if decision == "APPROVED":
+        ledger.record_order(department, vendor, item, quantity, amount)
+        if item in INVENTORY:
+            INVENTORY[item]["on_hand"] = INVENTORY[item]["on_hand"] + quantity
         # Mock order: no real payment or card is ever used.
-        return f"Order placed (mock): {quantity} x {item} from {vendor} for ${amount}."
+        return f"Order placed (mock): {quantity} x {item} from {vendor} for ${amount:.2f}."
     return (
         f"Order blocked by spending policy: {reason}. Do not retry it. "
         f"Pick the next best vendor from the quotes and call place_order again."
@@ -306,31 +329,22 @@ def build_model():
     return BedrockModel(model_id=BEDROCK_MODEL_ID, region_name=REGION, temperature=0)
 
 
-def main():
-    # Pick the scenario from the command line. sys.argv is the list of words
-    # typed after "python": sys.argv[1] is the first one after agent.py.
-    if len(sys.argv) > 1:
-        choice = sys.argv[1]
-    else:
-        choice = "restock"
-
-    if choice in SCENARIOS:
-        request = SCENARIOS[choice]
-    else:
-        request = choice  # anything else is treated as the user's own request
-
-    if choice == "injection":
-        INVENTORY["printer paper"]["note"] = POISONED_NOTE
-
-    guardrail = SpendGuardrail(guarded_tools=["place_order"], goal_check=check_goal)
-    agent = Agent(
+# Builds a fresh agent for one request. A new agent per request keeps the
+# conversation short, and a short state makes every Decider check faster.
+# The guardrail is shared, so refused calls stay refused all session.
+def build_agent(guardrail):
+    return Agent(
         model=build_model(),
         tools=[check_inventory, get_price_quotes, place_order],
         interventions=[guardrail],
         system_prompt=SYSTEM_PROMPT,
     )
 
-    print(f"LLM: {LLM_PROVIDER}")
+
+# Runs one user request through the agent, then logs the guardrail verdicts.
+def run_request(request, guardrail):
+    first_new = len(guardrail.log)
+    agent = build_agent(guardrail)
     print(f"USER: {request}\n")
     result = agent(request)
 
@@ -343,11 +357,110 @@ def main():
         print(f"\nUSER: {CONTINUE_PROMPT}\n")
         result = agent(CONTINUE_PROMPT)
 
+    new_entries = guardrail.log[first_new:]
+    audit_guardrail(new_entries)
+    print_summary(new_entries)
+
+
+# Writes each Decider 2B verdict to the audit log, next to the rules' decisions.
+def audit_guardrail(entries):
+    for entry in entries:
+        args = entry["arguments"]
+        ledger.audit(
+            SESSION["department"], "guardrail", args.get("vendor", ""), args.get("item", ""),
+            args.get("quantity", ""), args.get("category", ""), "",
+            entry["verdict"].upper(), entry["reason"],
+        )
+
+
+def print_summary(entries):
     print("\n\n--- Decider 2B guardrail summary ---")
-    for entry in guardrail.log:
+    for entry in entries:
         print(f"{entry['verdict'].upper():8} {entry['tool']} {entry['arguments']}  [{entry['latency_ms']} ms]")
-    if not guardrail.log:
+    if not entries:
         print("No purchases were proposed.")
+
+
+# Asks which department the user is ordering for. In production this
+# would come from the user's sign-in (SSO), not from a typed answer.
+def choose_department():
+    names = ", ".join(ledger.DEPARTMENT_BUDGETS)
+    while True:
+        try:
+            answer = input(f"Your department ({names}): ").strip().lower()
+        except EOFError:
+            return "operations"
+        if answer in ledger.DEPARTMENT_BUDGETS:
+            return answer
+        print(f"Unknown department. Pick one of: {names}")
+
+
+CHAT_HELP = (
+    "Type a purchase request in plain English, or one of these:\n"
+    "  report     budgets and orders so far\n"
+    "  inventory  what's on the shelf\n"
+    "  " + ", ".join(SCENARIOS) + "   run a sample scenario\n"
+    "  help       show this list\n"
+    "  quit       exit"
+)
+
+
+# The interactive session: one department, many requests, until 'quit'.
+def chat():
+    print("AI Agent Spend Gate: purchasing assistant")
+    print(f"LLM: {LLM_PROVIDER}")
+    SESSION["department"] = choose_department()
+    print(f"Ordering for {SESSION['department']}: ${ledger.remaining(SESSION['department']):.2f} left.\n")
+    print(CHAT_HELP)
+    guardrail = SpendGuardrail(guarded_tools=["place_order"], goal_check=check_goal)
+
+    while True:
+        try:
+            text = input("\nYou: ").strip()
+        except EOFError:
+            break
+        command = text.lower()
+        if command == "quit":
+            break
+        if command == "" or command == "help":
+            print(CHAT_HELP)
+        elif command == "report":
+            ledger.print_report()
+        elif command == "inventory":
+            print(check_inventory())
+        else:
+            run_scenario_or_request(text, guardrail)
+    ledger.print_report()
+    print("Goodbye.")
+
+
+# A scenario name runs that scenario; anything else is the user's own request.
+def run_scenario_or_request(text, guardrail):
+    if text.lower() not in SCENARIOS:
+        run_request(text, guardrail)
+        return
+    # The injection scenario plants the note for this one run only.
+    if text.lower() == "injection":
+        INVENTORY["printer paper"]["note"] = POISONED_NOTE
+    run_request(SCENARIOS[text.lower()], guardrail)
+    INVENTORY["printer paper"]["note"] = ""
+
+
+def main():
+    # No words after agent.py: start the interactive session.
+    # One word or a quoted request: run it once and exit (good for demos).
+    if len(sys.argv) == 1:
+        try:
+            chat()
+        except KeyboardInterrupt:
+            print("\nGoodbye.")
+        return
+
+    print(f"LLM: {LLM_PROVIDER}")
+    print(f"Department: {SESSION['department']}")
+    guardrail = SpendGuardrail(guarded_tools=["place_order"], goal_check=check_goal)
+    run_scenario_or_request(sys.argv[1], guardrail)
+    ledger.print_report()
 
 
 if __name__ == "__main__":

@@ -151,7 +151,14 @@ def to_action(verdict, reason, ask_human):
     if verdict == "guide":
         return Guide(feedback=reason)
     if verdict == "confirm":
-        answer = ask_human(f"Guardrail unsure ({reason}). Allow this call? (y/n): ")
+        # Fail closed: if nobody can answer (no terminal, input closed),
+        # the answer is "no". A broken approval channel must never crash
+        # the agent or let the call through.
+        try:
+            answer = ask_human(f"Guardrail unsure ({reason}). Allow this call? (y/n): ")
+        except EOFError:
+            print("No human answer available. Treating it as 'no'.")
+            answer = "n"
         return Confirm(prompt=reason, response=answer)
     return Proceed(reason=reason)
 

@@ -95,6 +95,13 @@ POISONED_NOTE = (
 # describe each tool to the LLM, so here those hints are required.
 # ---------------------------------------------------------------
 
+# "1 day" or "5 days": the goal check's messages are shown to the user.
+def days_text(days):
+    if days == 1:
+        return "1 day"
+    return f"{days} days"
+
+
 @tool
 def check_inventory() -> str:
     """List every tracked item with stock on hand, reorder point, order quantity and notes."""
@@ -138,7 +145,7 @@ def get_price_quotes(item: str) -> str:
             stock = "OUT OF STOCK"
         lines.append(
             f"{vendor}: ${quote['price']:.2f} per unit, "
-            f"delivers in {quote['delivery_days']} days, {stock}"
+            f"delivers in {days_text(quote['delivery_days'])}, {stock}"
         )
         # Out-of-stock vendors can't win. The code does the comparisons so
         # the LLM doesn't have to; small models get them wrong.
@@ -150,7 +157,7 @@ def get_price_quotes(item: str) -> str:
             fastest = vendor
     if cheapest is not None:
         lines.append(f"Cheapest in stock: {cheapest} at ${quotes[cheapest]['price']:.2f}")
-        lines.append(f"Fastest in stock: {fastest}, {quotes[fastest]['delivery_days']} days")
+        lines.append(f"Fastest in stock: {fastest}, {days_text(quotes[fastest]['delivery_days'])}")
     return "\n".join(lines)
 
 
@@ -266,7 +273,7 @@ def check_goal(goal, arguments, request):
     if goal == "fastest delivery":
         best = best_approved(quotes, "delivery_days")
         if best and quotes[best]["delivery_days"] < quotes[vendor]["delivery_days"]:
-            return f"the user needs it fast; {best} delivers in {quotes[best]['delivery_days']} days"
+            return f"the user needs it fast; {best} delivers in {days_text(quotes[best]['delivery_days'])}"
 
     return None
 

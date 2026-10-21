@@ -18,12 +18,11 @@
 # The model classifies. The code decides. Decider 2B never approves anything.
 
 import json
-import sys
 
 from strands.interventions import Confirm, Deny, Guide, InterventionHandler, Proceed
 
 from decision_pattern.decider_client import ask_decider, choice_question, yes_no_question
-from decision_pattern.progress import start_progress, stop_progress
+from decision_pattern import plain_display
 
 
 # ---------------------------------------------------------------
@@ -209,11 +208,15 @@ class SpendGuardrail(InterventionHandler):
     # goal_check: optional. Your function that checks a call against the
     #   user's goal using your own data. It gets (goal, arguments, request)
     #   and returns a problem as text, or None if the call meets the goal.
-    def __init__(self, guarded_tools, category_field="category", ask_human=input, goal_check=None):
+    # display: how checks are shown. Any module with show_check, show_note
+    #   and wait (see plain_display.py, the default).
+    def __init__(self, guarded_tools, category_field="category", ask_human=input,
+                 goal_check=None, display=plain_display):
         self.guarded_tools = guarded_tools
         self.category_field = category_field
         self.ask_human = ask_human
         self.goal_check = goal_check
+        self.display = display
         self.goals = {}  # user request -> Decider's goal answer, asked once per request
         # How long the last checks took, so the progress bar can estimate.
         # Starting guesses are from a laptop CPU; they update after each call.
@@ -236,12 +239,15 @@ class SpendGuardrail(InterventionHandler):
         # Same call as one already refused? Deny it again without asking.
         key = call_key(tool_name, arguments)
         if key in self.refused:
-            print(f"\n[Decider 2B guardrail] {tool_name} retried after a refusal -> DENY")
+            self.display.show_note(f"{tool_name} retried after a refusal -> DENY")
             return Deny(reason="Blocked by guardrail: this exact call was already refused. Do not retry it.")
 
         state = build_state(event.agent.messages, tool_name, arguments)
-        answers, latency_ms = ask_with_progress(
-            f"Decider 2B checking {tool_name}", state, QUESTIONS, self.expected_check_seconds
+        # "lambda: ask_decider(...)" packs up the call without running it.
+        # The display runs it while it shows the wait, then hands back the answer.
+        answers, latency_ms = self.display.wait(
+            f"Decider 2B checking {tool_name}", self.expected_check_seconds,
+            lambda: ask_decider(state, QUESTIONS),
         )
         self.expected_check_seconds = latency_ms / 1000
 
@@ -272,7 +278,7 @@ class SpendGuardrail(InterventionHandler):
             "reason": reason,
             "latency_ms": round(latency_ms),
         })
-        print_check(self.log[-1])
+        self.display.show_check(self.log[-1])
 
         action = to_action(verdict, reason, self.ask_human)
 
@@ -290,12 +296,13 @@ class SpendGuardrail(InterventionHandler):
     def user_goal(self, request):
         if request not in self.goals:
             state = f"--- USER REQUEST TO A PURCHASING ASSISTANT ---\n{request}"
-            answers, latency_ms = ask_with_progress(
-                "Decider 2B reading the user's goal", state, GOAL_QUESTIONS, self.expected_goal_seconds
+            answers, latency_ms = self.display.wait(
+                "Decider 2B reading the user's goal", self.expected_goal_seconds,
+                lambda: ask_decider(state, GOAL_QUESTIONS),
             )
             self.expected_goal_seconds = latency_ms / 1000
             self.goals[request] = answers["user_goal"]
-            print(f"\n[Decider 2B guardrail] user goal asked once for this request  [{latency_ms:.0f} ms]")
+            self.display.show_note(f"user goal asked once for this request  [{latency_ms:.0f} ms]")
         answer = self.goals[request]
         return answer["choice"], answer["confidence"]
 
@@ -311,41 +318,8 @@ def first_user_text(messages):
     return ""
 
 
-# Asks Decider 2B while a progress bar shows the wait.
-# try/finally: the bar stops even if the call fails, so it never keeps
-# drawing over an error message.
-def ask_with_progress(label, state, questions, expected_seconds):
-    handle = start_progress(label, expected_seconds)
-    try:
-        return ask_decider(state, questions)
-    finally:
-        stop_progress(handle)
-
-
 # Turns a tool call into one string, so two calls can be compared.
 # sort_keys puts the arguments in the same order every time, because the
 # LLM doesn't always send them in the same order.
 def call_key(tool_name, arguments):
     return tool_name + " " + json.dumps(arguments, sort_keys=True)
-
-
-# Prints one guardrail check so you can see the numbers behind the verdict.
-def print_check(entry):
-    print()
-    print(f"[Decider 2B guardrail] {entry['tool']} {json.dumps(entry['arguments'])}")
-    print(f"    grounded       : {entry['grounded']:.2f}")
-    print(f"    injected       : {entry['injected']:.2f}")
-    print(f"    item category  : {entry['item_category']} ({entry['category_confidence']:.2f})")
-    print(f"    user goal      : {entry['user_goal']} ({entry['goal_confidence']:.2f})")
-    print(f"    -> {paint(entry['verdict'])}: {entry['reason']}  [{entry['latency_ms']} ms]")
-
-
-# Verdict colors in a real terminal: green = proceed, red = deny,
-# yellow = guide or confirm. Plain text when output goes to a file.
-VERDICT_COLORS = {"proceed": "32", "deny": "31", "guide": "33", "confirm": "33"}
-
-
-def paint(verdict):
-    if not sys.stdout.isatty():
-        return verdict.upper()
-    return f"\033[{VERDICT_COLORS.get(verdict, '1')}m{verdict.upper()}\033[0m"

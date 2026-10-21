@@ -81,20 +81,3 @@ def set_aside_old_log():
         header = f.readline().strip()
     if header != ",".join(AUDIT_COLUMNS):
         os.replace(AUDIT_LOG, AUDIT_LOG.replace(".csv", f"_old_{int(time.time())}.csv"))
-
-
-# Prints budgets and what was bought this session.
-def print_report():
-    print("\n--- Budgets ---")
-    for department in DEPARTMENT_BUDGETS:
-        budget = DEPARTMENT_BUDGETS[department]
-        print(f"{department:12} budget ${budget:>8.2f}   spent ${spent[department]:>8.2f}   "
-              f"left ${remaining(department):>8.2f}")
-
-    print("\n--- Orders this session ---")
-    if not orders:
-        print("No orders yet.")
-    for order in orders:
-        print(f"{order['department']:12} {order['user']}: {order['quantity']} x {order['item']} "
-              f"from {order['vendor']}: ${order['amount']:.2f}")
-    print(f"\nEvery decision is in {AUDIT_LOG}")

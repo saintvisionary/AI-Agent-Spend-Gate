@@ -32,7 +32,6 @@ from strands.models import BedrockModel
 from decision_pattern.spend_guardrail import SpendGuardrail
 import ledger
 import session_ui
-from session_ui import color_decision
 from guard import APPROVED_VENDORS, check_request
 
 # Which LLM to use: "bedrock" or "ollama".
@@ -107,6 +106,25 @@ def days_text(days):
 @tool
 def check_inventory() -> str:
     """List every tracked item with stock on hand, reorder point, order quantity and notes."""
+    text = inventory_text()
+    session_ui.show_tool_result(text)
+    return text
+
+
+@tool
+def get_price_quotes(item: str) -> str:
+    """Get today's market data for an item: price per unit, delivery time and stock at each vendor.
+
+    Args:
+        item: The item name exactly as check_inventory lists it.
+    """
+    text = quotes_text(item)
+    session_ui.show_tool_result(text)
+    return text
+
+
+# The inventory as text, for the agent and for the "inventory" command.
+def inventory_text():
     lines = []
     for item in INVENTORY:
         row = INVENTORY[item]
@@ -126,13 +144,9 @@ def check_inventory() -> str:
     return "\n".join(lines)
 
 
-@tool
-def get_price_quotes(item: str) -> str:
-    """Get today's market data for an item: price per unit, delivery time and stock at each vendor.
-
-    Args:
-        item: The item name exactly as check_inventory lists it.
-    """
+# Today's market data for one item as text, with the cheapest and fastest
+# in-stock vendors worked out by the code.
+def quotes_text(item):
     if item not in PRICE_QUOTES:
         return f"No quotes found for '{item}'."
     quotes = PRICE_QUOTES[item]
@@ -181,11 +195,7 @@ def price_problem(vendor, item, unit_price):
 # Four-eyes approval: over the limit, a person decides, never the LLM.
 # Fail closed: no answer (input closed) counts as "no".
 def ask_approver(quantity, item, amount):
-    try:
-        answer = input(f"Human approver: allow {quantity} x {item} for ${amount}? (y/n): ")
-    except EOFError:
-        answer = "n"
-    return answer.strip().lower() == "y"
+    return session_ui.ask_yes_no(f"Human approver: allow {quantity} x {item} for ${amount:.2f}?")
 
 
 @tool
@@ -206,7 +216,7 @@ def place_order(vendor: str, item: str, quantity: int, unit_price: float, catego
 
     problem = price_problem(vendor, item, unit_price)
     if problem:
-        print(f"\n[Price check] {color_decision('BLOCKED')}: {problem}")
+        session_ui.show_price_block(problem)
         ledger.audit(user, department, "price check", vendor, item, quantity, category, "", "BLOCKED", problem)
         return f"Order blocked: {problem}."
 
@@ -214,7 +224,7 @@ def place_order(vendor: str, item: str, quantity: int, unit_price: float, catego
     # change the amount the policy checks.
     amount = round(quantity * unit_price, 2)
     decision, reason = check_request(vendor, category, amount, ledger.remaining(department))
-    print(f"\n[Spend Gate] {color_decision(decision)} {department} {vendor} ${amount:.2f}: {reason}")
+    session_ui.show_spend_gate(decision, department, vendor, amount, reason)
 
     if decision == "NEEDS APPROVAL":
         if ask_approver(quantity, item, amount):
@@ -348,6 +358,8 @@ def build_agent(guardrail):
         tools=[check_inventory, get_price_quotes, place_order],
         interventions=[guardrail],
         system_prompt=SYSTEM_PROMPT,
+        # Our own display instead of Strands' default printer (see session_ui.py).
+        callback_handler=session_ui.on_agent_event,
     )
 
 
@@ -358,11 +370,11 @@ def ask_agent(agent, text):
     try:
         return agent(text)
     except Exception as error:
-        print(f"\nThe request failed: {type(error).__name__}: {error}")
+        session_ui.show_error(error)
         if type(error).__name__ == "NoCredentialsError":
-            print("No AWS credentials found. Run 'aws configure', or use a local model:")
-            print('    $env:LLM_PROVIDER = "ollama"; $env:OLLAMA_MODEL = "qwen2.5:3b"')
-        print("Nothing was ordered by this request after the error. Your session is still open.")
+            session_ui.result("No AWS credentials found. Run 'aws configure', or use a local model:\n"
+                              '$env:LLM_PROVIDER = "ollama"; $env:OLLAMA_MODEL = "qwen2.5:3b"', style="yellow")
+        session_ui.result("Nothing was ordered by this request after the error. Your session is still open.")
         return None
 
 
@@ -370,9 +382,7 @@ def ask_agent(agent, text):
 def run_request(request, guardrail):
     first_new = len(guardrail.log)
     agent = build_agent(guardrail)
-    print(f"USER: {request}\n")
-    print("Working on it: the agent plans, then Decider 2B checks every order before it runs.")
-    print("On a laptop CPU each check takes about 20-45 seconds.\n")
+    session_ui.show_request(request)
     result = ask_agent(agent, request)
 
     # Small models sometimes say "I will now place the order" and stop
@@ -381,12 +391,12 @@ def run_request(request, guardrail):
     for turn in range(2):
         if result is None or "DONE" in str(result):
             break
-        print(f"\nUSER: {CONTINUE_PROMPT}\n")
+        session_ui.result("Agent stopped early; asking it to finish (or say DONE).")
         result = ask_agent(agent, CONTINUE_PROMPT)
 
     new_entries = guardrail.log[first_new:]
     audit_guardrail(new_entries)
-    print_summary(new_entries)
+    session_ui.show_summary(new_entries)
 
 
 # Writes each Decider 2B verdict to the audit log, next to the rules' decisions.
@@ -400,54 +410,35 @@ def audit_guardrail(entries):
         )
 
 
-def print_summary(entries):
-    print("\n\n--- Decider 2B guardrail summary ---")
-    for entry in entries:
-        print(f"{entry['verdict'].upper():8} {entry['tool']} {entry['arguments']}  [{entry['latency_ms']} ms]")
-    if not entries:
-        print("No purchases were proposed.")
-
-
-CHAT_HELP = (
-    "Type a purchase request in plain English, or one of these:\n"
-    "  report     budgets and orders so far\n"
-    "  whoami     who is signed in, and the budget left\n"
-    "  inventory  what's on the shelf\n"
-    "  " + ", ".join(SCENARIOS) + "   run a sample scenario\n"
-    "  help       show this list\n"
-    "  quit       exit"
-)
-
-
 # The interactive session: one department, many requests, until 'quit'.
 def chat():
     session_ui.print_banner(LLM_PROVIDER)
     SESSION["user"] = session_ui.sign_in()
     SESSION["department"] = session_ui.choose_department()
-    print(f"\nSigned in: {SESSION['user']}   Department: {SESSION['department']}\n")
-    print(CHAT_HELP)
-    guardrail = SpendGuardrail(guarded_tools=["place_order"], goal_check=check_goal)
+    session_ui.print_signed_in(SESSION)
+    session_ui.print_help(list(SCENARIOS))
+    guardrail = SpendGuardrail(guarded_tools=["place_order"], goal_check=check_goal, display=session_ui)
 
     while True:
         try:
-            text = input(session_ui.prompt(SESSION)).strip()
+            text = session_ui.ask_command(SESSION)
         except EOFError:
             break
         command = text.lower()
         if command == "quit":
             break
         if command == "" or command == "help":
-            print(CHAT_HELP)
+            session_ui.print_help(list(SCENARIOS))
         elif command == "report":
-            ledger.print_report()
+            session_ui.print_report()
         elif command == "whoami":
             session_ui.print_whoami(SESSION)
         elif command == "inventory":
-            print(check_inventory())
+            session_ui.print_inventory(inventory_text())
         else:
             run_scenario_or_request(text, guardrail)
-    ledger.print_report()
-    print("Goodbye.")
+    session_ui.print_report()
+    session_ui.console.print("Goodbye.")
 
 
 # A scenario name runs that scenario; anything else is the user's own request.
@@ -469,14 +460,14 @@ def main():
         try:
             chat()
         except KeyboardInterrupt:
-            print("\nGoodbye.")
+            session_ui.console.print("\nGoodbye.")
         return
 
-    print(f"LLM: {LLM_PROVIDER}")
-    print(f"User: {SESSION['user']}   Department: {SESSION['department']}")
-    guardrail = SpendGuardrail(guarded_tools=["place_order"], goal_check=check_goal)
+    session_ui.print_banner(LLM_PROVIDER)
+    session_ui.print_signed_in(SESSION)
+    guardrail = SpendGuardrail(guarded_tools=["place_order"], goal_check=check_goal, display=session_ui)
     run_scenario_or_request(sys.argv[1], guardrail)
-    ledger.print_report()
+    session_ui.print_report()
 
 
 if __name__ == "__main__":

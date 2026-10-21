@@ -12,6 +12,8 @@ It checks whether the call is **honest**. It doesn't check whether the call is *
 |:---|:---|
 | `spend_guardrail.py` | The questions, the thresholds, the policy (`decide()`), and the `SpendGuardrail` handler |
 | `decider_client.py` | A small standard-library client for the Decider 2B server (`/v1/systemone`) |
+| `plain_display.py` | The default display: plain text and a progress bar (standard library only) |
+| `progress.py` | The progress bar used by `plain_display.py` |
 
 ## Use it
 
@@ -81,6 +83,7 @@ Two more behaviors:
 - **Different categories:** edit the `item_category` options so their names match your policy's category names exactly. The comparison is a plain string match.
 - **Different tools:** `guarded_tools` takes any tool names. The questions talk about "the proposed purchase," so reword them for other kinds of actions (sending email, deleting data).
 - **Different goals:** edit the `user_goal` options in `GOAL_QUESTIONS` and handle the new names in your `goal_check`. Keep the model on classification and put the comparison in code: a yes/no "does this match the goal?" question was tried first and couldn't separate good orders from bad ones (0.54–0.73).
+- **Your own display:** the guardrail never prints by itself. It calls `show_check(entry)`, `show_note(text)` and `wait(label, expected_seconds, work)` on its `display` option. The default, `plain_display.py`, uses only the standard library. Pass any module with those three functions, for example a Rich terminal UI (the repo's `session_ui.py`), a web page, or a logger: `SpendGuardrail(..., display=my_display)`.
 - **Human approval outside a terminal:** pass your own `ask_human` function, for example one that posts to Slack and waits for a reply. It takes a prompt string and returns `"y"` or `"n"`.
 - **Tune the thresholds** on your own conversations. Run a set of known-good and known-bad cases (see `test_guardrail.py` in the repo root) and move the numbers until the verdicts match. Lower `GUESSED_UNDER` and `CONFIDENT_OVER` to send fewer calls to humans; raise them to be stricter.
 

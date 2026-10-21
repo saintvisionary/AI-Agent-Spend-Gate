@@ -185,6 +185,10 @@ class SpendGuardrail(InterventionHandler):
         self.category_field = category_field
         self.ask_human = ask_human
         self.log = []  # one entry per checked call, for the demo and timing
+        # Calls that were denied (by Decider or by a human) in this session.
+        # In a live run, the agent retried a call a human had refused until
+        # Decider's score drifted high enough to proceed. A "no" must stick.
+        self.refused = []
 
     def before_tool_call(self, event, **kwargs):
         tool_name = event.tool_use["name"]
@@ -193,6 +197,12 @@ class SpendGuardrail(InterventionHandler):
         # Only money-moving tools are checked.
         if tool_name not in self.guarded_tools:
             return Proceed()
+
+        # Same call as one already refused? Deny it again without asking.
+        key = call_key(tool_name, arguments)
+        if key in self.refused:
+            print(f"\n[Decider 2B guardrail] {tool_name} retried after a refusal -> DENY")
+            return Deny(reason="Blocked by guardrail: this exact call was already refused. Do not retry it.")
 
         state = build_state(event.agent.messages, tool_name, arguments)
         answers, latency_ms = ask_decider(state, QUESTIONS)
@@ -213,7 +223,22 @@ class SpendGuardrail(InterventionHandler):
         })
         print_check(self.log[-1])
 
-        return to_action(verdict, reason, self.ask_human)
+        action = to_action(verdict, reason, self.ask_human)
+
+        # Remember refusals: a Deny, or a Confirm the human answered "no".
+        # action.evaluate is Strands' own check of the answer (y/yes = allow).
+        if verdict == "deny":
+            self.refused.append(key)
+        if verdict == "confirm" and not action.evaluate(action.response):
+            self.refused.append(key)
+        return action
+
+
+# Turns a tool call into one string, so two calls can be compared.
+# sort_keys puts the arguments in the same order every time, because the
+# LLM doesn't always send them in the same order.
+def call_key(tool_name, arguments):
+    return tool_name + " " + json.dumps(arguments, sort_keys=True)
 
 
 # Prints one guardrail check so you can see the numbers behind the verdict.

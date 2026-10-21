@@ -306,13 +306,36 @@ pip install -r requirements.txt
 strands-decider serve StrandsAgents/strands-decider-2B-qwen3.5-v1-2610 --port 8099 --device cpu
 ```
 
-**Terminal 2: run the agent** (uses your AWS credentials from `aws configure`):
+**Terminal 2: start a session** (uses your AWS credentials from `aws configure`):
 ```powershell
-python agent.py restock      # or: rush, preferred, injection, guess, bulk
-python agent.py "order 5 boxes of printer paper from Paperleaf Co"   # or your own request
+python agent.py
 ```
 
-When the agent asks `(y/n)`, you're the human approver.
+```
+AI Agent Spend Gate: purchasing assistant
+Your department (operations, marketing): marketing
+Ordering for marketing: $500.00 left.
+
+You: we need printer paper by tomorrow
+...
+Decider 2B checking place_order  [#########-----------]  14s / ~30s
+...
+You: report
+
+--- Budgets ---
+operations   budget $ 1000.00   spent $    0.00   left $ 1000.00
+marketing    budget $  500.00   spent $   90.00   left $  410.00
+
+--- Orders this session ---
+marketing    5 x printer paper from Paperleaf Co: $90.00
+```
+
+Type a request in plain English, a scenario name (`restock`, `rush`, `preferred`, `injection`, `guess`, `bulk`), `report`, `inventory`, `help` or `quit`. When the agent asks `(y/n)`, you're the human approver. To run one scenario and exit: `python agent.py restock`.
+
+- **The department comes from the session, not the LLM.** You pick it when you start; `place_order` reads it from there. If the department were a tool argument, the agent (or injected text) could charge whichever department still has money.
+- **Every decision is written to `logs/audit_log.csv`**, one row per decision from every control, with a `source` column (`guardrail`, `price check` or `spend gate`).
+- **A progress bar shows each Decider check.** It estimates from the last check's real time and stops at 95% until the answer arrives.
+- **A failed LLM call doesn't end the session.** You get a short fix (for example, missing AWS credentials), and your budgets and orders stay.
 
 Other ways to run it:
 
@@ -354,6 +377,7 @@ Other ways to run it:
 | 0d | Amount can't have fractions of a cent | **BLOCKED** |
 | 1 | Category must be on the allowlist | **BLOCKED** |
 | 2 | Vendor must be on the approved list (exact match, fails closed) | **BLOCKED** |
+| 2b | Amount must fit the department's remaining budget (operations $1,000, marketing $500) | **BLOCKED**, before any human is asked |
 | 3 | Amount over $500 | **NEEDS APPROVAL** |
 | 4 | All checks passed | **APPROVED** |
 
@@ -380,6 +404,10 @@ Before the rules run, the `place_order` tool checks the order against today's qu
 | A refusal sticks for the session | The agent can't retry until a score drifts into Proceed |
 | No human answer = no | The approval channel fails closed |
 | Tools do the comparisons ("NEEDS REORDER", "Cheapest in stock") | Small models get comparisons wrong. Code is better at arithmetic; the LLM only has to follow facts |
+| The department comes from the session | Identity comes from sign-in, not from what a request claims. The agent can't pick the department with money left |
+| The budget rule blocks before human approval | A person is never asked to approve money the department doesn't have |
+| A new agent per request, one guardrail per session | Short conversations keep Decider fast; refused calls stay refused all session |
+| The LLM call is wrapped in `try/except` | An outside service will fail sometimes. The session, budgets and order history survive it |
 
 Problems I hit while building this, and how I fixed them, are in **[JOURNAL.md](JOURNAL.md)**.
 
@@ -409,6 +437,8 @@ The Spend Gate runs on ECS Fargate in a private subnet, loads its policy from S3
 | [`agent.py`](agent.py) | The Strands purchasing agent: market data, tools, price check, goal check, scenarios, Bedrock model |
 | [`decision_pattern/`](decision_pattern/) | **The reusable Decider 2B guardrail** (questions, policy, wiring, client) |
 | [`guard.py`](guard.py) | The spending rules: `check_request()` |
+| [`ledger.py`](ledger.py) | Department budgets, order history, `report`, and the audit log |
+| [`decision_pattern/progress.py`](decision_pattern/progress.py) | Progress bar for slow Decider checks |
 | [`test_guardrail.py`](test_guardrail.py) | Runs the guardrail on fixed cases, without an LLM |
 | [`JOURNAL.md`](JOURNAL.md) | Problems and fixes, and design decisions |
 | [`assets/architecture.drawio`](assets/architecture.drawio) | Editable source of the AWS architecture diagram |

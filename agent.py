@@ -31,6 +31,8 @@ from strands.models import BedrockModel
 
 from decision_pattern.spend_guardrail import SpendGuardrail
 import ledger
+import session_ui
+from session_ui import color_decision
 from guard import APPROVED_VENDORS, check_request
 
 # Which LLM to use: "bedrock" or "ollama".
@@ -47,7 +49,7 @@ OLLAMA_HOST = "http://127.0.0.1:11434"
 
 # Who is using the agent right now. Set at sign-in (chat() asks for it),
 # read by place_order. The LLM can't change it: no tool writes to it.
-SESSION = {"department": "operations"}
+SESSION = {"user": "demo user", "department": "operations"}
 
 
 # ---------------------------------------------------------------
@@ -200,28 +202,29 @@ def place_order(vendor: str, item: str, quantity: int, unit_price: float, catego
     # The department comes from the signed-in user (SESSION), never from
     # the LLM. Otherwise the agent could charge whichever one has money left.
     department = SESSION["department"]
+    user = SESSION["user"]
 
     problem = price_problem(vendor, item, unit_price)
     if problem:
-        print(f"\n[Price check] BLOCKED: {problem}")
-        ledger.audit(department, "price check", vendor, item, quantity, category, "", "BLOCKED", problem)
+        print(f"\n[Price check] {color_decision('BLOCKED')}: {problem}")
+        ledger.audit(user, department, "price check", vendor, item, quantity, category, "", "BLOCKED", problem)
         return f"Order blocked: {problem}."
 
     # The code works out the total, not the LLM, so a math slip can't
     # change the amount the policy checks.
     amount = round(quantity * unit_price, 2)
     decision, reason = check_request(vendor, category, amount, ledger.remaining(department))
-    print(f"\n[Spend Gate] {decision} {department} {vendor} ${amount:.2f}: {reason}")
+    print(f"\n[Spend Gate] {color_decision(decision)} {department} {vendor} ${amount:.2f}: {reason}")
 
     if decision == "NEEDS APPROVAL":
         if ask_approver(quantity, item, amount):
             decision, reason = "APPROVED", "approved by a human"
         else:
             decision, reason = "BLOCKED", "rejected by the human approver"
-    ledger.audit(department, "spend gate", vendor, item, quantity, category, amount, decision, reason)
+    ledger.audit(user, department, "spend gate", vendor, item, quantity, category, amount, decision, reason)
 
     if decision == "APPROVED":
-        ledger.record_order(department, vendor, item, quantity, amount)
+        ledger.record_order(user, department, vendor, item, quantity, amount)
         if item in INVENTORY:
             INVENTORY[item]["on_hand"] = INVENTORY[item]["on_hand"] + quantity
         # Mock order: no real payment or card is ever used.
@@ -391,7 +394,7 @@ def audit_guardrail(entries):
     for entry in entries:
         args = entry["arguments"]
         ledger.audit(
-            SESSION["department"], "guardrail", args.get("vendor", ""), args.get("item", ""),
+            SESSION["user"], SESSION["department"], "guardrail", args.get("vendor", ""), args.get("item", ""),
             args.get("quantity", ""), args.get("category", ""), "",
             entry["verdict"].upper(), entry["reason"],
         )
@@ -405,23 +408,10 @@ def print_summary(entries):
         print("No purchases were proposed.")
 
 
-# Asks which department the user is ordering for. In production this
-# would come from the user's sign-in (SSO), not from a typed answer.
-def choose_department():
-    names = ", ".join(ledger.DEPARTMENT_BUDGETS)
-    while True:
-        try:
-            answer = input(f"Your department ({names}): ").strip().lower()
-        except EOFError:
-            return "operations"
-        if answer in ledger.DEPARTMENT_BUDGETS:
-            return answer
-        print(f"Unknown department. Pick one of: {names}")
-
-
 CHAT_HELP = (
     "Type a purchase request in plain English, or one of these:\n"
     "  report     budgets and orders so far\n"
+    "  whoami     who is signed in, and the budget left\n"
     "  inventory  what's on the shelf\n"
     "  " + ", ".join(SCENARIOS) + "   run a sample scenario\n"
     "  help       show this list\n"
@@ -431,16 +421,16 @@ CHAT_HELP = (
 
 # The interactive session: one department, many requests, until 'quit'.
 def chat():
-    print("AI Agent Spend Gate: purchasing assistant")
-    print(f"LLM: {LLM_PROVIDER}")
-    SESSION["department"] = choose_department()
-    print(f"Ordering for {SESSION['department']}: ${ledger.remaining(SESSION['department']):.2f} left.\n")
+    session_ui.print_banner(LLM_PROVIDER)
+    SESSION["user"] = session_ui.sign_in()
+    SESSION["department"] = session_ui.choose_department()
+    print(f"\nSigned in: {SESSION['user']}   Department: {SESSION['department']}\n")
     print(CHAT_HELP)
     guardrail = SpendGuardrail(guarded_tools=["place_order"], goal_check=check_goal)
 
     while True:
         try:
-            text = input("\nYou: ").strip()
+            text = input(session_ui.prompt(SESSION)).strip()
         except EOFError:
             break
         command = text.lower()
@@ -450,6 +440,8 @@ def chat():
             print(CHAT_HELP)
         elif command == "report":
             ledger.print_report()
+        elif command == "whoami":
+            session_ui.print_whoami(SESSION)
         elif command == "inventory":
             print(check_inventory())
         else:
@@ -481,7 +473,7 @@ def main():
         return
 
     print(f"LLM: {LLM_PROVIDER}")
-    print(f"Department: {SESSION['department']}")
+    print(f"User: {SESSION['user']}   Department: {SESSION['department']}")
     guardrail = SpendGuardrail(guarded_tools=["place_order"], goal_check=check_goal)
     run_scenario_or_request(sys.argv[1], guardrail)
     ledger.print_report()

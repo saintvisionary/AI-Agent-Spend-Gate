@@ -18,6 +18,7 @@
 # The model classifies. The code decides. Decider 2B never approves anything.
 
 import json
+import sys
 
 from strands.interventions import Confirm, Deny, Guide, InterventionHandler, Proceed
 
@@ -336,4 +337,15 @@ def print_check(entry):
     print(f"    injected       : {entry['injected']:.2f}")
     print(f"    item category  : {entry['item_category']} ({entry['category_confidence']:.2f})")
     print(f"    user goal      : {entry['user_goal']} ({entry['goal_confidence']:.2f})")
-    print(f"    -> {entry['verdict'].upper()}: {entry['reason']}  [{entry['latency_ms']} ms]")
+    print(f"    -> {paint(entry['verdict'])}: {entry['reason']}  [{entry['latency_ms']} ms]")
+
+
+# Verdict colors in a real terminal: green = proceed, red = deny,
+# yellow = guide or confirm. Plain text when output goes to a file.
+VERDICT_COLORS = {"proceed": "32", "deny": "31", "guide": "33", "confirm": "33"}
+
+
+def paint(verdict):
+    if not sys.stdout.isatty():
+        return verdict.upper()
+    return f"\033[{VERDICT_COLORS.get(verdict, '1')}m{verdict.upper()}\033[0m"

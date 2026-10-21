@@ -22,6 +22,7 @@ import json
 from strands.interventions import Confirm, Deny, Guide, InterventionHandler, Proceed
 
 from decision_pattern.decider_client import ask_decider, choice_question, yes_no_question
+from decision_pattern.progress import start_progress, stop_progress
 
 
 # ---------------------------------------------------------------
@@ -213,6 +214,10 @@ class SpendGuardrail(InterventionHandler):
         self.ask_human = ask_human
         self.goal_check = goal_check
         self.goals = {}  # user request -> Decider's goal answer, asked once per request
+        # How long the last checks took, so the progress bar can estimate.
+        # Starting guesses are from a laptop CPU; they update after each call.
+        self.expected_check_seconds = 30
+        self.expected_goal_seconds = 6
         self.log = []  # one entry per checked call, for the demo and timing
         # Calls that were denied (by Decider or by a human) in this session.
         # In a live run, the agent retried a call a human had refused until
@@ -234,7 +239,10 @@ class SpendGuardrail(InterventionHandler):
             return Deny(reason="Blocked by guardrail: this exact call was already refused. Do not retry it.")
 
         state = build_state(event.agent.messages, tool_name, arguments)
-        answers, latency_ms = ask_decider(state, QUESTIONS)
+        answers, latency_ms = ask_with_progress(
+            f"Decider 2B checking {tool_name}", state, QUESTIONS, self.expected_check_seconds
+        )
+        self.expected_check_seconds = latency_ms / 1000
 
         claimed_category = arguments.get(self.category_field, "")
         verdict, reason = decide(answers, claimed_category)
@@ -281,7 +289,10 @@ class SpendGuardrail(InterventionHandler):
     def user_goal(self, request):
         if request not in self.goals:
             state = f"--- USER REQUEST TO A PURCHASING ASSISTANT ---\n{request}"
-            answers, latency_ms = ask_decider(state, GOAL_QUESTIONS)
+            answers, latency_ms = ask_with_progress(
+                "Decider 2B reading the user's goal", state, GOAL_QUESTIONS, self.expected_goal_seconds
+            )
+            self.expected_goal_seconds = latency_ms / 1000
             self.goals[request] = answers["user_goal"]
             print(f"\n[Decider 2B guardrail] user goal asked once for this request  [{latency_ms:.0f} ms]")
         answer = self.goals[request]
@@ -297,6 +308,17 @@ def first_user_text(messages):
             if "text" in block:
                 return block["text"]
     return ""
+
+
+# Asks Decider 2B while a progress bar shows the wait.
+# try/finally: the bar stops even if the call fails, so it never keeps
+# drawing over an error message.
+def ask_with_progress(label, state, questions, expected_seconds):
+    handle = start_progress(label, expected_seconds)
+    try:
+        return ask_decider(state, questions)
+    finally:
+        stop_progress(handle)
 
 
 # Turns a tool call into one string, so two calls can be compared.

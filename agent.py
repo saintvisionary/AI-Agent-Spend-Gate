@@ -341,21 +341,38 @@ def build_agent(guardrail):
     )
 
 
+# Sends one message to the agent. If the LLM or Decider can't be reached,
+# prints a short fix instead of crashing, so the session (budgets, order
+# history) survives. Returns the agent's reply, or None if it failed.
+def ask_agent(agent, text):
+    try:
+        return agent(text)
+    except Exception as error:
+        print(f"\nThe request failed: {type(error).__name__}: {error}")
+        if type(error).__name__ == "NoCredentialsError":
+            print("No AWS credentials found. Run 'aws configure', or use a local model:")
+            print('    $env:LLM_PROVIDER = "ollama"; $env:OLLAMA_MODEL = "qwen2.5:3b"')
+        print("Nothing was ordered by this request after the error. Your session is still open.")
+        return None
+
+
 # Runs one user request through the agent, then logs the guardrail verdicts.
 def run_request(request, guardrail):
     first_new = len(guardrail.log)
     agent = build_agent(guardrail)
     print(f"USER: {request}\n")
-    result = agent(request)
+    print("Working on it: the agent plans, then Decider 2B checks every order before it runs.")
+    print("On a laptop CPU each check takes about 20-45 seconds.\n")
+    result = ask_agent(agent, request)
 
     # Small models sometimes say "I will now place the order" and stop
     # without calling the tool. Give the agent up to two more turns to
     # finish. Every order still goes through the guardrail and the rules.
     for turn in range(2):
-        if "DONE" in str(result):
+        if result is None or "DONE" in str(result):
             break
         print(f"\nUSER: {CONTINUE_PROMPT}\n")
-        result = agent(CONTINUE_PROMPT)
+        result = ask_agent(agent, CONTINUE_PROMPT)
 
     new_entries = guardrail.log[first_new:]
     audit_guardrail(new_entries)

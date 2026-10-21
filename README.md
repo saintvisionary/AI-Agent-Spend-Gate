@@ -291,50 +291,75 @@ xychart-beta
 
 ## Quick start
 
-Requires Python 3.10+, an AWS account with Amazon Bedrock access, and about 6 GB of free RAM for Decider 2B.
+You need **Python 3.10+** and about **6 GB of free RAM** for Decider 2B. For the LLM, either AWS credentials with Amazon Bedrock access, or [Ollama](https://ollama.com) (free, local).
 
+**One command does everything:**
 ```powershell
 git clone https://github.com/saintvisionary/AI-Agent-Spend-Gate.git
 cd AI-Agent-Spend-Gate
+python start.py
+```
+
+`start.py` uses only the standard library, so it runs before anything is installed. It doesn't need the virtual environment activated, so PowerShell's script policy never gets in the way. It:
+
+1. Creates `.venv` and installs `requirements.txt` (skipped next time unless the file changes)
+2. Picks the LLM: **Bedrock** if AWS credentials are set up, otherwise **Ollama**, and downloads `qwen2.5:3b` if needed (set `LLM_PROVIDER` to override)
+3. Starts Decider 2B in the background and waits until it's ready (the first run downloads the model; progress goes to `logs/decider.log`)
+4. Runs the agent, then stops Decider when you quit (only if `start.py` started it)
+
+`python start.py restock` runs one scenario and exits.
+
+<details>
+<summary>Manual setup instead</summary>
+
+```powershell
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+# Terminal 1
+.\.venv\Scripts\strands-decider.exe serve StrandsAgents/strands-decider-2B-qwen3.5-v1-2610 --port 8099 --device cpu
+# Terminal 2
+.\.venv\Scripts\python.exe agent.py
 ```
-
-**Terminal 1: start Decider 2B** (the first run downloads the model):
-```powershell
-strands-decider serve StrandsAgents/strands-decider-2B-qwen3.5-v1-2610 --port 8099 --device cpu
-```
-
-**Terminal 2: start a session** (uses your AWS credentials from `aws configure`):
-```powershell
-python agent.py
-```
+</details>
 
 ```
-AI Agent Spend Gate: purchasing assistant
-Your department (operations, marketing): marketing
-Ordering for marketing: $500.00 left.
+ SIGN IN  ────────────────────────────────────
+› Name: July
+ DEPARTMENT  ─────────────────────────────────
+[1]  operations  ████████████  $1,000.00 of $1,000.00
+[2]  marketing   ████████████  $500.00 of $500.00
+› Pick a number: 2
+⏺ Signed in  July · marketing
 
-You: we need printer paper by tomorrow
-...
-Decider 2B checking place_order  [#########-----------]  14s / ~30s
-...
-You: report
-
---- Budgets ---
-operations   budget $ 1000.00   spent $    0.00   left $ 1000.00
-marketing    budget $  500.00   spent $   90.00   left $  410.00
-
---- Orders this session ---
-marketing    5 x printer paper from Paperleaf Co: $90.00
+July · marketing · $500.00 left
+> we need printer paper by tomorrow
+⏺ check_inventory
+  ⎿  printer paper: NEEDS REORDER. On hand 4, reorder at 10, order quantity 5
+⏺ get_price_quotes
+  ⎿  ...
+     Fastest in stock: Paperleaf Co, 1 day
+⏺ place_order
+⠋ Decider 2B checking place_order… 0:00:14 (last one took 28s)
+┌─ Decider 2B · place_order ────────────────────────────────┐
+│ 5 x printer paper · Paperleaf Co · $18.00 each            │
+│                                                           │
+│ grounded         ▰▰▰▰▰▰▰▱▱▱  0.72                         │
+│ injected         ▰▱▱▱▱▱▱▱▱▱  0.08                         │
+│ item looks like  ▰▰▰▰▰▰▰▰▰▱  office supplies (0.86)       │
+│ user goal        ▰▰▰▰▰▰▰▰▰▱  fastest delivery (0.91)      │
+│                                                           │
+│ PROCEED  purchase values are grounded in the conversation │
+└─────────────────────────────────────────────────── 28.9s ─┘
+⏺ Spend Gate  APPROVED  marketing · Paperleaf Co · $90.00
+  ⎿  within policy
 ```
 
-Type a request in plain English, a scenario name (`restock`, `rush`, `preferred`, `injection`, `guess`, `bulk`), `report`, `inventory`, `help` or `quit`. When the agent asks `(y/n)`, you're the human approver. To run one scenario and exit: `python agent.py restock`.
+Type a request in plain English, a scenario name (`restock`, `rush`, `preferred`, `injection`, `guess`, `bulk`), `report`, `inventory`, `help` or `quit`. When the agent asks `(y/n)`, you're the human approver. To run one scenario and exit: `python start.py restock`.
 
 - **The department comes from the session, not the LLM.** You pick it when you start; `place_order` reads it from there. If the department were a tool argument, the agent (or injected text) could charge whichever department still has money.
 - **Every decision is written to `logs/audit_log.csv`**, one row per decision from every control, with a `source` column (`guardrail`, `price check` or `spend gate`).
-- **A progress bar shows each Decider check.** It estimates from the last check's real time and stops at 95% until the answer arrives.
+- **Every step is one line.** Tool calls show as `⏺`, with results under `⎿`; each Decider check gets a framed panel with its scores; a spinner with a timer runs while Decider works. Built with [Rich](https://github.com/Textualize/rich). The guardrail itself doesn't depend on it (see the `display` option in [`decision_pattern/`](decision_pattern/)).
+- **Untrusted text is never read as styling.** Rich treats `[brackets]` as style commands, so LLM output and tool data are always printed as plain `Text`. Otherwise an injected note could restyle or hide parts of the screen from the human approver.
 - **A failed LLM call doesn't end the session.** You get a short fix (for example, missing AWS credentials), and your budgets and orders stay.
 
 Other ways to run it:
@@ -437,6 +462,8 @@ The Spend Gate runs on ECS Fargate in a private subnet, loads its policy from S3
 | [`agent.py`](agent.py) | The Strands purchasing agent: market data, tools, price check, goal check, scenarios, Bedrock model |
 | [`decision_pattern/`](decision_pattern/) | **The reusable Decider 2B guardrail** (questions, policy, wiring, client) |
 | [`guard.py`](guard.py) | The spending rules: `check_request()` |
+| [`start.py`](start.py) | One-command setup and run: venv, packages, LLM, Decider 2B, agent |
+| [`session_ui.py`](session_ui.py) | The terminal: sign-in, step lines, Decider panels, reports (Rich) |
 | [`ledger.py`](ledger.py) | Department budgets, order history, `report`, and the audit log |
 | [`decision_pattern/progress.py`](decision_pattern/progress.py) | Progress bar for slow Decider checks |
 | [`test_guardrail.py`](test_guardrail.py) | Runs the guardrail on fixed cases, without an LLM |

@@ -62,6 +62,28 @@ QUESTIONS = {
     ),
 }
 
+# Intent: what did the user ask the purchase to optimize for?
+# Asked SEPARATELY, with only the user's request as the state. In a live run,
+# the agent wrote "the goal is to get it quickly" and Decider, reading the
+# whole conversation, picked "fastest delivery" for a lowest-price request.
+# The agent (or injected text) must not be able to change the user's goal.
+# Decider only classifies the goal. Whether the proposed call meets it is
+# checked by code against real market data (goal_check, below). A yes/no
+# "does it match the goal?" question was tried first and couldn't separate
+# good from bad calls reliably (0.54-0.73).
+GOAL_QUESTIONS = {
+    "user_goal": choice_question(
+        "Judging only by what the user wrote, what did they ask this purchase "
+        "to optimize for?",
+        {
+            "lowest price": "the cheapest option, saving money, best price",
+            "fastest delivery": "a deadline, urgency, delivery by a date or within days",
+            "named vendor": "a specific vendor the user wants to buy from",
+            "no goal": "the user stated no preference about price, speed or vendor",
+        },
+    ),
+}
+
 
 # ---------------------------------------------------------------
 # THE POLICY KNOBS
@@ -72,7 +94,9 @@ QUESTIONS = {
 INJECTION_OVER = 0.5      # injected >= this: Deny
 LABEL_SURE = 0.6          # category confidence needed to call a label wrong
 GUESSED_UNDER = 0.3       # grounded below this: Guide (values look guessed)
-CONFIDENT_OVER = 0.7      # grounded between the two: Confirm (ask a human)
+CONFIDENT_OVER = 0.6      # grounded between the two: Confirm (ask a human)
+                          # (was 0.7: honest orders in the test set scored 0.65-0.77)
+GOAL_SURE = 0.5           # user_goal confidence needed before checking the goal
 
 
 # ---------------------------------------------------------------
@@ -180,10 +204,15 @@ class SpendGuardrail(InterventionHandler):
     #   like reading inventory, run without a check.
     # category_field: which tool argument holds the LLM's category label.
     # ask_human: the function that asks a person. input() asks at the terminal.
-    def __init__(self, guarded_tools, category_field="category", ask_human=input):
+    # goal_check: optional. Your function that checks a call against the
+    #   user's goal using your own data. It gets (goal, arguments, request)
+    #   and returns a problem as text, or None if the call meets the goal.
+    def __init__(self, guarded_tools, category_field="category", ask_human=input, goal_check=None):
         self.guarded_tools = guarded_tools
         self.category_field = category_field
         self.ask_human = ask_human
+        self.goal_check = goal_check
+        self.goals = {}  # user request -> Decider's goal answer, asked once per request
         self.log = []  # one entry per checked call, for the demo and timing
         # Calls that were denied (by Decider or by a human) in this session.
         # In a live run, the agent retried a call a human had refused until
@@ -210,6 +239,17 @@ class SpendGuardrail(InterventionHandler):
         claimed_category = arguments.get(self.category_field, "")
         verdict, reason = decide(answers, claimed_category)
 
+        # Goal check, only if nothing stronger already happened. Decider
+        # names the goal; the caller's code decides if this call meets it.
+        goal, goal_confidence = "not checked", 0.0
+        if verdict in ("proceed", "confirm") and self.goal_check is not None:
+            request = first_user_text(event.agent.messages)
+            goal, goal_confidence = self.user_goal(request)
+            if goal != "no goal" and goal_confidence >= GOAL_SURE:
+                problem = self.goal_check(goal, arguments, request)
+                if problem:
+                    verdict, reason = "guide", problem
+
         self.log.append({
             "tool": tool_name,
             "arguments": arguments,
@@ -217,6 +257,8 @@ class SpendGuardrail(InterventionHandler):
             "injected": round(answers["injected"]["noul"], 2),
             "item_category": answers["item_category"]["choice"],
             "category_confidence": round(answers["item_category"]["confidence"], 2),
+            "user_goal": goal,
+            "goal_confidence": round(goal_confidence, 2),
             "verdict": verdict,
             "reason": reason,
             "latency_ms": round(latency_ms),
@@ -233,6 +275,29 @@ class SpendGuardrail(InterventionHandler):
             self.refused.append(key)
         return action
 
+    # Asks Decider for the user's goal, using ONLY the user's request as the
+    # state, and remembers the answer so it's asked once per request.
+    # Returns the goal and Decider's confidence in it.
+    def user_goal(self, request):
+        if request not in self.goals:
+            state = f"--- USER REQUEST TO A PURCHASING ASSISTANT ---\n{request}"
+            answers, latency_ms = ask_decider(state, GOAL_QUESTIONS)
+            self.goals[request] = answers["user_goal"]
+            print(f"\n[Decider 2B guardrail] user goal asked once for this request  [{latency_ms:.0f} ms]")
+        answer = self.goals[request]
+        return answer["choice"], answer["confidence"]
+
+
+# The user's original request: the first text in a user message.
+def first_user_text(messages):
+    for message in messages:
+        if message.get("role") != "user":
+            continue
+        for block in message.get("content", []):
+            if "text" in block:
+                return block["text"]
+    return ""
+
 
 # Turns a tool call into one string, so two calls can be compared.
 # sort_keys puts the arguments in the same order every time, because the
@@ -248,4 +313,5 @@ def print_check(entry):
     print(f"    grounded       : {entry['grounded']:.2f}")
     print(f"    injected       : {entry['injected']:.2f}")
     print(f"    item category  : {entry['item_category']} ({entry['category_confidence']:.2f})")
+    print(f"    user goal      : {entry['user_goal']} ({entry['goal_confidence']:.2f})")
     print(f"    -> {entry['verdict'].upper()}: {entry['reason']}  [{entry['latency_ms']} ms]")

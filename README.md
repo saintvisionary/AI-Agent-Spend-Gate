@@ -303,23 +303,44 @@ xychart-beta
 
 ## Quick start
 
-You need **Python 3.10+** and about **6 GB of free RAM** for Decider 2B. For the LLM, either AWS credentials with Amazon Bedrock access, or [Ollama](https://ollama.com) (free, local).
+### First run: three steps
 
-**One command does everything:**
+| | Step | Notes |
+|:---:|:---|:---|
+| **1** | Install **[Python 3.10+](https://www.python.org/downloads/)** | Windows: tick **"Add python.exe to PATH"** during the install |
+| **2** | Install **[Ollama](https://ollama.com)** and open it | Free, runs the LLM on your computer. Skip it if you have AWS credentials with Amazon Bedrock access |
+| **3** | Download this repo and **double-click the launcher** | Windows: **`Start Spend Gate.bat`** · Mac: **`start.command`** · Linux: `./start.sh` |
+
+The first start installs packages and downloads two models (Decider 2B and `qwen2.5:3b`), so it takes a while once; after that it opens in under a minute. Decider 2B needs about **6 GB of free memory**, so close heavy apps first.
+
+**Not sure you're ready?** `python start.py --check` reports what's installed and what's missing, and changes nothing:
+
+```
+  [OK] Python 3.13.15
+  [OK] Packages installed
+  [..] AWS credentials for Bedrock: not found (fine if you use Ollama)
+  [OK] Ollama: running, qwen2.5:3b downloaded
+  [OK] Decider 2B: not running (start.py starts it for you)
+  [OK] Free memory: 7.2 GB
+
+Ready to start.
+```
+
+**Prefer a terminal?** It's the same thing:
 ```powershell
 git clone https://github.com/saintvisionary/AI-Agent-Spend-Gate.git
 cd AI-Agent-Spend-Gate
 python start.py
 ```
 
-`start.py` uses only the standard library, so it runs before anything is installed. It doesn't need the virtual environment activated, so PowerShell's script policy never gets in the way. It:
+The launchers only find Python and run `start.py`. A `.bat` file isn't blocked by PowerShell's script policy, so there's no `Set-ExecutionPolicy` step. `start.py` uses only the standard library, so it runs before anything is installed. It doesn't need the virtual environment activated, so PowerShell's script policy never gets in the way. It:
 
 1. Creates `.venv` and installs `requirements.txt` (skipped next time unless the file changes)
 2. Picks the LLM: **Bedrock** if AWS credentials are set up, otherwise **Ollama**, and downloads `qwen2.5:3b` if needed (set `LLM_PROVIDER` to override)
 3. Starts Decider 2B in the background and waits until it's ready (the first run downloads the model; progress goes to `logs/decider.log`)
 4. Opens the app, then stops Decider when you quit (only if `start.py` started it)
 
-`python start.py --cli` opens the simple terminal version instead, and `python start.py restock` runs one scenario and exits.
+`python start.py --cli` opens the simple terminal version instead, `python start.py restock` runs one scenario and exits, and `python start.py --check` reports your setup.
 
 <details>
 <summary>Manual setup instead</summary>
@@ -341,7 +362,7 @@ A full-screen terminal app built with [Textual](https://github.com/Textualize/te
 ```
 ┌ AI Agent Spend Gate ──────────────────────────────────────────────────────────────┐
 │ > we need printer paper by tomorrow                  │ SIGNED IN                  │
-│ ⏺ check_inventory                                    │ July                       │
+│ ⏺ check_inventory                                    │ Ruth Okafor  leader        │
 │   ⎿  printer paper: NEEDS REORDER ...                │ operations · LLM: ollama   │
 │ ⏺ get_price_quotes                                   │                            │
 │ ╭─ Decider 2B · place_order ─────────────────────╮   │ › operations ██████████ $… │
@@ -354,7 +375,7 @@ A full-screen terminal app built with [Textual](https://github.com/Textualize/te
 ├──────────────────────────────────────────────────────┴────────────────────────────┤
 │ ⠋ Decider 2B checking place_order…  14s  (last one took 28s)                     │
 │ ╭ Ask for a purchase, or type a command ──────────────────────────────────────╮   │
-│ F1 Help  F2 Report  F3 Who am I  F4 Inventory  ^L Clear  ^Q Quit                  │
+│ F1 Help  F2 Report  F3 Who am I  F4 Inventory  F5 Policy  Esc Cancel  ^Q Quit     │
 └───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -362,6 +383,45 @@ A full-screen terminal app built with [Textual](https://github.com/Textualize/te
 - **Human approvals are a pop-up.** Approve (y) or Deny (n); Deny has focus, and Escape counts as Deny.
 - **Models warm up while you read the help,** so the first order doesn't pay the start-up cost.
 - **The same code underneath.** `agent.py` sends every step to a swappable display (`agent.UI`). The app and the simple CLI are two displays over the same tools, guardrail and rules.
+
+### Using the app
+
+**1. Sign in.** Type a name. The roster in `policy.json` decides your role (capital letters don't matter):
+
+| Sign in as | You get |
+|:---|:---|
+| **Tyler Bynum** | App owner, ordering for Security: can change every setting |
+| **Ruth Okafor** · **Kim Alvarez** · **Amanda Chen** · **Kevin Walsh** · **Brooke Patel** · **Rick Sullivan** · **John Rivera** | Leader of Operations · Marketing · Legal · Finance and Accounting · R&D · IT · HR: can change their department's budget and reorder settings |
+| any other name | Member: pick a department, order and look; no policy changes |
+
+**2. Ask for something,** in plain English or with a sample scenario:
+
+| Try | What it shows |
+|:---|:---|
+| `restock` | A normal order: Decider says PROCEED, the rules approve it |
+| `injection` | A planted "manager pre-approved" note: the gift-card order is **denied** |
+| `rush` / `preferred` | The user's goal (fastest, a named vendor) is enforced with **Guide** |
+| `bulk` | Over $500: an **approval pop-up** asks you |
+| `we need lab gloves by tomorrow` | Your own request (sign in as Brooke Patel, R&D) |
+
+**3. Keys and commands**
+
+| Key | Command | Does |
+|:---:|:---|:---|
+| F1 | `help` | What you can do |
+| F2 | `report` | Budgets and every order this session |
+| F3 | `whoami` | Who you are, your role, your budget |
+| F4 | `inventory` | Your department's items |
+| F5 | `policy` | The rules; leaders and the owner can change them here |
+| Esc | `cancel` / `stop` | Stops the running request at once. Nothing more gets ordered. When nothing is running, Esc offers to quit |
+| Ctrl+L | `clear` | Clears the log |
+| Ctrl+Q | `quit` | Quits (asks first if a request is running) |
+
+While a request runs, a **■ Cancel** button appears next to the spinner. In VS Code's terminal, some F-keys open VS Code menus instead; the typed commands always work.
+
+**4. Changing a setting** (leaders and the owner): F5 → pick a setting with the arrow keys → Enter → type the new value → Enter shows `old -> new` → **Save**. Every change is logged in `logs/policy_changes.csv`.
+
+**What each colored line means:** ⏺ a step the agent took · the **Decider 2B** panel is its check, with the border colored by the verdict · **Catalog check** and **Spend Gate** are the rules · green = go, red = stop, yellow = a person or a retry.
 
 ### Policy changes without code
 
@@ -554,7 +614,8 @@ The Spend Gate runs on ECS Fargate in a private subnet, loads its policy from S3
 | [`agent.py`](agent.py) | The Strands purchasing agent: tools, catalog and price checks, goal check, scenarios, Bedrock model |
 | [`decision_pattern/`](decision_pattern/) | **The reusable Decider 2B guardrail** (questions, policy, wiring, client) |
 | [`guard.py`](guard.py) | The spending rules: `check_request()` |
-| [`start.py`](start.py) | One-command setup and run: venv, packages, LLM, Decider 2B, agent |
+| [`start.py`](start.py) | One-command setup and run: venv, packages, LLM, Decider 2B, agent (`--check` reports your setup) |
+| `Start Spend Gate.bat` · [`start.command`](start.command) · [`start.sh`](start.sh) | Double-click launchers for Windows, Mac and Linux |
 | [`app.py`](app.py) | The full-screen app (Textual): log, sidebar, activity line, approval pop-ups |
 | [`session_ui.py`](session_ui.py) | The look (Rich panels, tables, step lines) shared by both front ends, plus the simple CLI |
 | [`catalog.py`](catalog.py) | Departments, the 15 items and who uses each (the entitlements), vendor quotes, category descriptions |

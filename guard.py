@@ -15,20 +15,28 @@
 import math
 
 
+import policy
+
 # ---------------------------------------------------------------
 # POLICY
-# The rules, kept in one place at the top so they're easy to review.
-# Names in CAPITALS are constants: values the code reads but never changes.
+# The values live in policy.json (loaded by policy.py), so a department
+# leader can change them in the app without editing code. The rules below
+# read them every time they decide, so a change applies to the next request.
 # ---------------------------------------------------------------
 
 # Allowlist: only these categories can be bought. Anything else is blocked.
-ALLOWED_CATEGORIES = ["office supplies", "advertising"]
+# (The same list object as in the policy, so changes show up here too.)
+ALLOWED_CATEGORIES = policy.POLICY["allowed_categories"]
 
 # Allowlist: only these vendors are approved. These are made-up names.
-APPROVED_VENDORS = ["Northbeam Office Supply", "Paperleaf Co"]
+APPROVED_VENDORS = policy.POLICY["approved_vendors"]
+
 
 # Purchases over this amount need a human to approve them.
-APPROVAL_OVER = 500
+# A function, not a constant: a number can't be shared like a list can,
+# so the rules ask for the current value each time.
+def approval_over():
+    return policy.POLICY["approval_over"]
 
 
 # ---------------------------------------------------------------
@@ -85,8 +93,8 @@ def check_request(vendor, category, amount, remaining_budget=None):
         return "BLOCKED", f"over remaining budget (${remaining_budget:.2f} left)"
 
     # Rule 3: large purchases go to a human (four-eyes approval).
-    if amount > APPROVAL_OVER:
-        return "NEEDS APPROVAL", f"over ${APPROVAL_OVER}, a human must approve"
+    if amount > approval_over():
+        return "NEEDS APPROVAL", f"over ${approval_over()}, a human must approve"
 
     # Rule 4: every check passed.
     return "APPROVED", "within policy"

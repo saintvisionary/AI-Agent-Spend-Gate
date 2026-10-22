@@ -9,11 +9,12 @@ import csv
 import os
 import time
 
-# How much each department can spend in this period. Made-up numbers.
-DEPARTMENT_BUDGETS = {
-    "operations": 1000,
-    "marketing": 500,
-}
+import policy
+
+# How much each department can spend in this period. Made-up numbers in
+# policy.json; a department leader can change them in the app.
+# (The same dict object as in the policy, so changes show up here too.)
+DEPARTMENT_BUDGETS = policy.POLICY["department_budgets"]
 
 # The audit log. logs/ is in .gitignore, so real runs never get committed.
 AUDIT_LOG = os.path.join("logs", "audit_log.csv")

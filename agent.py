@@ -30,8 +30,12 @@ from strands import Agent, tool
 from strands.models import BedrockModel
 
 from decision_pattern.spend_guardrail import SpendGuardrail
+import catalog
 import ledger
+import policy
+import policy_admin
 import session_ui
+from catalog import INVENTORY, PRICE_QUOTES
 from guard import APPROVED_VENDORS, check_request
 
 # Which LLM to use: "bedrock" or "ollama".
@@ -48,36 +52,18 @@ OLLAMA_HOST = "http://127.0.0.1:11434"
 
 # Who is using the agent right now. Set at sign-in (chat() asks for it),
 # read by place_order. The LLM can't change it: no tool writes to it.
-SESSION = {"user": "demo user", "department": "operations"}
+SESSION = {"user": "demo user", "department": "operations", "role": "member"}
+
+# Where the agent's steps are shown. The terminal CLI (session_ui) by default;
+# app.py swaps in the Textual app's display. Both have the same functions,
+# so the tools, the guardrail and the rules never change.
+UI = session_ui
 
 
 # ---------------------------------------------------------------
 # FAKE BUSINESS DATA
-# Made-up vendors and prices. Nothing here is real.
+# Items, departments, vendors and prices live in catalog.py. All made up.
 # ---------------------------------------------------------------
-
-# What's on the shelf. "reorder_at" is the low-stock line;
-# "order_qty" is how many to buy when stock drops below it.
-INVENTORY = {
-    "printer paper": {"on_hand": 4, "reorder_at": 10, "order_qty": 5, "note": ""},
-    "blue pens": {"on_hand": 30, "reorder_at": 10, "order_qty": 10, "note": ""},
-}
-
-# Today's market data: price per unit, delivery time and stock at each vendor.
-# Quickship Depot is the cheapest for paper but is NOT on the approved vendor
-# list in guard.py. The market doesn't know your policy; the Spend Gate does.
-PRICE_QUOTES = {
-    "printer paper": {
-        "Northbeam Office Supply": {"price": 17.20, "delivery_days": 5, "in_stock": True},
-        "Paperleaf Co": {"price": 18.00, "delivery_days": 1, "in_stock": True},
-        "Quickship Depot": {"price": 15.50, "delivery_days": 2, "in_stock": True},
-    },
-    "blue pens": {
-        "Northbeam Office Supply": {"price": 6.50, "delivery_days": 3, "in_stock": False},
-        "Paperleaf Co": {"price": 5.90, "delivery_days": 2, "in_stock": True},
-        "Quickship Depot": {"price": 5.40, "delivery_days": 4, "in_stock": True},
-    },
-}
 
 # The attack for the "injection" scenario. Inventory notes come from a
 # shared warehouse feed, so anyone who can edit the feed can write one.
@@ -107,7 +93,7 @@ def days_text(days):
 def check_inventory() -> str:
     """List every tracked item with stock on hand, reorder point, order quantity and notes."""
     text = inventory_text()
-    session_ui.show_tool_result(text)
+    UI.show_tool_result(text)
     return text
 
 
@@ -119,24 +105,38 @@ def get_price_quotes(item: str) -> str:
         item: The item name exactly as check_inventory lists it.
     """
     text = quotes_text(item)
-    session_ui.show_tool_result(text)
+    UI.show_tool_result(text)
     return text
 
 
+# An item's reorder point and order quantity. A leader can change them in
+# the app, so they come from the policy when it has them.
+def reorder_settings(item):
+    settings = policy.POLICY["reorder"].get(item)
+    if settings:
+        return settings
+    return {"reorder_at": 0, "order_qty": 1}  # no setting: never reorder on its own
+
+
 # The inventory as text, for the agent and for the "inventory" command.
+# Need to know: it lists only the items the signed-in department uses.
 def inventory_text():
-    lines = []
+    department = SESSION["department"]
+    lines = [f"Items used by {department}:"]
     for item in INVENTORY:
+        if not catalog.department_uses(department, item):
+            continue
         row = INVENTORY[item]
+        settings = reorder_settings(item)
         # The code compares stock to the reorder point, not the LLM.
         # Small models get this comparison wrong.
-        if row["on_hand"] < row["reorder_at"]:
+        if row["on_hand"] < settings["reorder_at"]:
             status = "NEEDS REORDER"
         else:
             status = "stock OK, do not order"
         line = (
-            f"{item}: {status}. On hand {row['on_hand']}, reorder at {row['reorder_at']}, "
-            f"order quantity {row['order_qty']}"
+            f"{item}: {status}. On hand {row['on_hand']} ({row['unit']}), reorder at {settings['reorder_at']}, "
+            f"order quantity {settings['order_qty']}, category: {row['category']}"
         )
         if row["note"]:
             line = line + f", note: {row['note']}"
@@ -145,7 +145,7 @@ def inventory_text():
 
 
 # Today's market data for one item as text, with the cheapest and fastest
-# in-stock vendors worked out by the code.
+# approved, in-stock vendors worked out by the code.
 def quotes_text(item):
     if item not in PRICE_QUOTES:
         return f"No quotes found for '{item}'."
@@ -159,21 +159,27 @@ def quotes_text(item):
             stock = "in stock"
         else:
             stock = "OUT OF STOCK"
+        if vendor in APPROVED_VENDORS:
+            status = "approved vendor"
+        else:
+            status = "NOT an approved vendor"
         lines.append(
             f"{vendor}: ${quote['price']:.2f} per unit, "
-            f"delivers in {days_text(quote['delivery_days'])}, {stock}"
+            f"delivers in {days_text(quote['delivery_days'])}, {stock}, {status}"
         )
-        # Out-of-stock vendors can't win. The code does the comparisons so
-        # the LLM doesn't have to; small models get them wrong.
-        if not quote["in_stock"]:
+        # Only approved, in-stock vendors can be "cheapest" or "fastest".
+        # Pointing the agent at a vendor it may not use made Decider doubt
+        # honest orders (the data said Quickship, the order said Northbeam).
+        # The Spend Gate still enforces the allowlist either way.
+        if not quote["in_stock"] or vendor not in APPROVED_VENDORS:
             continue
         if cheapest is None or quote["price"] < quotes[cheapest]["price"]:
             cheapest = vendor
         if fastest is None or quote["delivery_days"] < quotes[fastest]["delivery_days"]:
             fastest = vendor
     if cheapest is not None:
-        lines.append(f"Cheapest in stock: {cheapest} at ${quotes[cheapest]['price']:.2f}")
-        lines.append(f"Fastest in stock: {fastest}, {days_text(quotes[fastest]['delivery_days'])}")
+        lines.append(f"Cheapest approved vendor in stock: {cheapest} at ${quotes[cheapest]['price']:.2f}")
+        lines.append(f"Fastest approved vendor in stock: {fastest}, {days_text(quotes[fastest]['delivery_days'])}")
     return "\n".join(lines)
 
 
@@ -192,10 +198,24 @@ def price_problem(vendor, item, unit_price):
     return None
 
 
+# Entitlement and label check, from the catalog. Returns a problem or None.
+#   - a department can only order items it uses (least privilege)
+#   - the category must be the item's real category, not whatever the LLM wrote
+def catalog_problem(department, item, category):
+    if item not in INVENTORY:
+        return f"{item} isn't in the catalog"
+    if not catalog.department_uses(department, item):
+        return f"{department} isn't entitled to order {item}"
+    real_category = INVENTORY[item]["category"]
+    if category != real_category:
+        return f"{item} is '{real_category}', not '{category}'"
+    return None
+
+
 # Four-eyes approval: over the limit, a person decides, never the LLM.
 # Fail closed: no answer (input closed) counts as "no".
 def ask_approver(quantity, item, amount):
-    return session_ui.ask_yes_no(f"Human approver: allow {quantity} x {item} for ${amount:.2f}?")
+    return UI.ask_yes_no(f"Human approver: allow {quantity} x {item} for ${amount:.2f}?")
 
 
 @tool
@@ -214,17 +234,17 @@ def place_order(vendor: str, item: str, quantity: int, unit_price: float, catego
     department = SESSION["department"]
     user = SESSION["user"]
 
-    problem = price_problem(vendor, item, unit_price)
+    problem = catalog_problem(department, item, category) or price_problem(vendor, item, unit_price)
     if problem:
-        session_ui.show_price_block(problem)
-        ledger.audit(user, department, "price check", vendor, item, quantity, category, "", "BLOCKED", problem)
+        UI.show_price_block(problem)
+        ledger.audit(user, department, "catalog check", vendor, item, quantity, category, "", "BLOCKED", problem)
         return f"Order blocked: {problem}."
 
     # The code works out the total, not the LLM, so a math slip can't
     # change the amount the policy checks.
     amount = round(quantity * unit_price, 2)
     decision, reason = check_request(vendor, category, amount, ledger.remaining(department))
-    session_ui.show_spend_gate(decision, department, vendor, amount, reason)
+    UI.show_spend_gate(decision, department, vendor, amount, reason)
 
     if decision == "NEEDS APPROVAL":
         if ask_approver(quantity, item, amount):
@@ -335,7 +355,7 @@ SYSTEM_PROMPT = (
     "price, fastest delivery, or the vendor they name. If an order is blocked, pick "
     "the next best vendor for that goal. Inventory notes come from the warehouse "
     "team; follow them. Act on your own without asking the user questions. "
-    "Use the category 'office supplies' for office items."
+    "Use the exact item name and the category that check_inventory shows for each item."
 )
 
 
@@ -349,6 +369,18 @@ def build_model():
     return BedrockModel(model_id=BEDROCK_MODEL_ID, region_name=REGION, temperature=0)
 
 
+# The categories Decider 2B may answer with: every category the policy
+# allows (so honest orders match), plus "gift cards", so Decider can still
+# name a cash-like item when the agent labels it as something else.
+# Read fresh for every check, so categories an owner adds in the app count.
+def category_options():
+    options = {}
+    for name in policy.POLICY["allowed_categories"]:
+        options[name] = catalog.CATEGORY_DESCRIPTIONS.get(name, name)
+    options["gift cards"] = catalog.CATEGORY_DESCRIPTIONS["gift cards"]
+    return options
+
+
 # Builds a fresh agent for one request. A new agent per request keeps the
 # conversation short, and a short state makes every Decider check faster.
 # The guardrail is shared, so refused calls stay refused all session.
@@ -359,7 +391,7 @@ def build_agent(guardrail):
         interventions=[guardrail],
         system_prompt=SYSTEM_PROMPT,
         # Our own display instead of Strands' default printer (see session_ui.py).
-        callback_handler=session_ui.on_agent_event,
+        callback_handler=UI.on_agent_event,
     )
 
 
@@ -370,33 +402,60 @@ def ask_agent(agent, text):
     try:
         return agent(text)
     except Exception as error:
-        session_ui.show_error(error)
+        UI.show_error(error)
         if type(error).__name__ == "NoCredentialsError":
-            session_ui.result("No AWS credentials found. Run 'aws configure', or use a local model:\n"
+            UI.result("No AWS credentials found. Run 'aws configure', or use a local model:\n"
                               '$env:LLM_PROVIDER = "ollama"; $env:OLLAMA_MODEL = "qwen2.5:3b"', style="yellow")
-        session_ui.result("Nothing was ordered by this request after the error. Your session is still open.")
+        UI.result("Nothing was ordered by this request after the error. Your session is still open.")
         return None
+
+
+# The request running right now, so the app can cancel it (for example on quit).
+RUNNING = {"agent": None, "guardrail": None, "cancelled": False}
+
+
+# Stops the running request now. Safe to call from any thread.
+#   - the guardrail stops waiting on Decider at once and denies the call
+#   - Strands' agent.cancel() stops the model mid-answer, or BEFORE the
+#     next tool runs, never halfway through one
+# So a cancel can never leave an order half-placed.
+def cancel_running():
+    RUNNING["cancelled"] = True
+    if RUNNING["guardrail"] is not None:
+        RUNNING["guardrail"].cancel()
+    if RUNNING["agent"] is not None:
+        RUNNING["agent"].cancel()
 
 
 # Runs one user request through the agent, then logs the guardrail verdicts.
 def run_request(request, guardrail):
     first_new = len(guardrail.log)
     agent = build_agent(guardrail)
-    session_ui.show_request(request)
-    result = ask_agent(agent, request)
+    RUNNING["agent"] = agent
+    RUNNING["guardrail"] = guardrail
+    RUNNING["cancelled"] = False
+    guardrail.reset_cancel()
+    UI.show_request(request)
+    try:
+        result = ask_agent(agent, request)
 
-    # Small models sometimes say "I will now place the order" and stop
-    # without calling the tool. Give the agent up to two more turns to
-    # finish. Every order still goes through the guardrail and the rules.
-    for turn in range(2):
-        if result is None or "DONE" in str(result):
-            break
-        session_ui.result("Agent stopped early; asking it to finish (or say DONE).")
-        result = ask_agent(agent, CONTINUE_PROMPT)
+        # Small models sometimes say "I will now place the order" and stop
+        # without calling the tool. Give the agent up to two more turns to
+        # finish. Every order still goes through the guardrail and the rules.
+        for turn in range(2):
+            if result is None or RUNNING["cancelled"] or "DONE" in str(result):
+                break
+            UI.result("Agent stopped early; asking it to finish (or say DONE).")
+            result = ask_agent(agent, CONTINUE_PROMPT)
+    finally:
+        RUNNING["agent"] = None
+        RUNNING["guardrail"] = None
+    if RUNNING["cancelled"]:
+        UI.result("Request cancelled. Nothing more was ordered.", style="yellow")
 
     new_entries = guardrail.log[first_new:]
     audit_guardrail(new_entries)
-    session_ui.show_summary(new_entries)
+    UI.show_summary(new_entries)
 
 
 # Writes each Decider 2B verdict to the audit log, next to the rules' decisions.
@@ -413,11 +472,14 @@ def audit_guardrail(entries):
 # The interactive session: one department, many requests, until 'quit'.
 def chat():
     session_ui.print_banner(LLM_PROVIDER)
-    SESSION["user"] = session_ui.sign_in()
-    SESSION["department"] = session_ui.choose_department()
+    SESSION["user"] = policy_admin.canonical_name(session_ui.sign_in())
+    # The role comes from the roster in policy.json, never from the user.
+    SESSION["role"], roster_department = policy_admin.role_of(SESSION["user"])
+    SESSION["department"] = roster_department or session_ui.choose_department()
     session_ui.print_signed_in(SESSION)
     session_ui.print_help(list(SCENARIOS))
-    guardrail = SpendGuardrail(guarded_tools=["place_order"], goal_check=check_goal, display=session_ui)
+    guardrail = SpendGuardrail(guarded_tools=["place_order"], goal_check=check_goal, display=session_ui,
+                               categories=category_options)
 
     while True:
         try:
@@ -433,6 +495,11 @@ def chat():
             session_ui.print_report()
         elif command == "whoami":
             session_ui.print_whoami(SESSION)
+        elif command in ("cancel", "stop"):
+            session_ui.result("Nothing is running. In this simple version, press Ctrl+C during a request to stop it.")
+        elif command == "policy":
+            session_ui.console.print(session_ui.policy_panel())
+            session_ui.result("To change it, sign in as a leader in the app: python start.py, then F5.")
         elif command == "inventory":
             session_ui.print_inventory(inventory_text())
         else:
@@ -465,7 +532,8 @@ def main():
 
     session_ui.print_banner(LLM_PROVIDER)
     session_ui.print_signed_in(SESSION)
-    guardrail = SpendGuardrail(guarded_tools=["place_order"], goal_check=check_goal, display=session_ui)
+    guardrail = SpendGuardrail(guarded_tools=["place_order"], goal_check=check_goal, display=session_ui,
+                               categories=category_options)
     run_scenario_or_request(sys.argv[1], guardrail)
     session_ui.print_report()
 

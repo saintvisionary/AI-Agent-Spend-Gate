@@ -10,9 +10,11 @@
 #     strands-decider serve StrandsAgents/strands-decider-2B-qwen3.5-v1-2610 --port 8099
 #
 # Only the standard library is used here: json to build the request,
-# urllib to send it, os to read a setting, time to measure speed.
+# urllib to send it, os to read a setting, time to measure speed,
+# threading to make a slow request cancellable.
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -74,6 +76,60 @@ def ask_decider(state, questions):
             "Start it with: strands-decider serve "
             "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610 --port 8099"
         )
+    except TimeoutError:
+        # Connected, but no answer in time (for example, Decider is busy).
+        raise RuntimeError(f"Decider didn't answer within {TIMEOUT_SECONDS} seconds. Try again in a moment.")
     elapsed_ms = (time.perf_counter() - start) * 1000
 
     return payload["answers"], elapsed_ms
+
+
+# Raised when the user cancels while Decider is still thinking.
+class Cancelled(Exception):
+    pass
+
+
+# The helper thread of the last request, if it may still be running.
+# Cancelling stops US waiting, but the Decider server keeps working on that
+# request and answers one request at a time. A new request sent now would
+# queue behind it, and enough of them in a row would time out.
+_last_helper = {"thread": None}
+
+
+# Waits (cancellably) until a cancelled request has finished on the server.
+def wait_for_server(cancel_signal):
+    helper = _last_helper["thread"]
+    while helper is not None and helper.is_alive():
+        if cancel_signal.is_set():
+            raise Cancelled()
+        helper.join(0.1)
+
+
+# Like ask_decider(), but it can be cancelled at any moment.
+# A web request can't be stopped halfway, so it runs on its own helper
+# thread, and this function waits for EITHER the answer OR the cancel
+# signal (a threading.Event), checking 10 times a second. On cancel it
+# raises Cancelled right away; the helper finishes on its own later and
+# its answer is thrown away.
+def ask_decider_or_cancel(state, questions, cancel_signal):
+    wait_for_server(cancel_signal)
+    outcome = {}
+
+    def work():
+        try:
+            outcome["answer"] = ask_decider(state, questions)
+        except Exception as error:
+            outcome["error"] = error
+
+    helper = threading.Thread(target=work, daemon=True)
+    _last_helper["thread"] = helper
+    helper.start()
+    while helper.is_alive():
+        if cancel_signal.is_set():
+            raise Cancelled()
+        helper.join(0.1)
+    if cancel_signal.is_set():
+        raise Cancelled()
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["answer"]

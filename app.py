@@ -18,6 +18,8 @@
 # This file only changes how things are shown and how the human answers.
 import json
 import os
+import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -33,6 +35,7 @@ from textual.widgets import Button, Footer, Header, Input, Label, OptionList, Ri
 from textual.widgets.option_list import Option
 
 import agent
+import audit_export
 import ledger
 import policy
 import policy_admin
@@ -40,7 +43,7 @@ import session_ui as ui
 from decision_pattern.decider_client import ask_decider, yes_no_question
 from decision_pattern.spend_guardrail import SpendGuardrail
 
-COMMAND_WORDS = ["report", "whoami", "inventory", "policy", "cancel", "stop", "help", "clear", "quit"] + list(agent.SCENARIOS)
+COMMAND_WORDS = ["report", "whoami", "inventory", "policy", "audit", "cancel", "stop", "help", "clear", "quit"] + list(agent.SCENARIOS)
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
@@ -210,6 +213,93 @@ class PolicyScreen(ModalScreen):
             settings.clear_options()
             settings.add_options(self.setting_options())
             self.app.write_log(ui.step_text("Policy changed", Text(message), dot="green"))
+
+    def action_close(self):
+        self.dismiss(None)
+
+
+# Opens a folder in the computer's file browser (Explorer, Finder, ...).
+def open_folder(folder):
+    path = os.path.abspath(folder)
+    try:
+        if os.name == "nt":
+            os.startfile(path)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", path])
+        else:
+            subprocess.Popen(["xdg-open", path])
+    except OSError:
+        pass
+
+
+# Audit & Export: one button per job. Buttons your role can't use are
+# greyed out with the reason next to them, so the permission model is visible.
+# Every check happens again in audit_export.py; this screen only shows results.
+class AuditScreen(ModalScreen):
+    BINDINGS = [("escape", "close", "Close")]
+
+    def __init__(self, session):
+        super().__init__()
+        self.session = session
+        self.last_folder = None
+
+    def compose(self) -> ComposeResult:
+        audit_ok, audit_reason = audit_export.can_export_audit(self.session)
+        terraform_ok, terraform_reason = audit_export.can_export_terraform(self.session)
+        with Vertical(id="audit"):
+            yield Label(f"Audit & Export  ·  {self.session['user']} ({self.session.get('role', 'member')})",
+                        classes="approval-title")
+            yield Static("Evidence for internal and external audits, and the purchasing policy as code. "
+                         "Files go to the exports folder.", classes="muted")
+            with Horizontal(classes="audit-row"):
+                yield Button("🧾 Generate audit pack", id="generate", variant="success", disabled=not audit_ok)
+                yield Label(audit_reason or "Decisions, exceptions, policy changes, access review, entitlements, integrity",
+                            classes="muted audit-note")
+            with Horizontal(classes="audit-row"):
+                yield Button("🔗 Verify logs", id="verify", variant="primary")
+                yield Label("Re-checks both hash chains: shows the exact row if anything was edited",
+                            classes="muted audit-note")
+            with Horizontal(classes="audit-row"):
+                yield Button("🏗️ Export policy as Terraform", id="terraform", variant="primary", disabled=not terraform_ok)
+                yield Label(terraform_reason or "S3 + read-only IAM policy, with the app's hard limits as validation",
+                            classes="muted audit-note")
+            with VerticalScroll(id="audit-result"):
+                yield Static("", id="audit-output")
+            with Horizontal(classes="audit-row"):
+                yield Button("📂 Open folder", id="open", disabled=True)
+                yield Button("Close (Esc)", id="close")
+
+    def show(self, renderable):
+        self.query_one("#audit-output", Static).update(renderable)
+
+    def on_button_pressed(self, event: Button.Pressed):
+        button = event.button.id
+        if button == "generate":
+            ok, message, summary = audit_export.build_audit_pack(self.session)
+            if ok:
+                self.show(ui.audit_summary_panel(summary))
+                self.finished(summary["folder"], message)
+            else:
+                self.show(Text(message, style="red"))
+        elif button == "verify":
+            self.show(ui.verify_panel(audit_export.verify_logs()))
+        elif button == "terraform":
+            ok, message, folder = audit_export.export_terraform(self.session)
+            if ok:
+                self.show(ui.terraform_panel(folder))
+                self.finished(folder, message)
+            else:
+                self.show(Text(message, style="red"))
+        elif button == "open" and self.last_folder:
+            open_folder(self.last_folder)
+        elif button == "close":
+            self.dismiss(None)
+
+    # After an export: enable "Open folder" and note it in the main log.
+    def finished(self, folder, message):
+        self.last_folder = folder
+        self.query_one("#open", Button).disabled = False
+        self.app.write_log(ui.step_text("Export", Text(message), dot="green"))
 
     def action_close(self):
         self.dismiss(None)
@@ -405,6 +495,15 @@ class SpendGateApp(App):
     #log { width: 1fr; border: round cyan; padding: 0 1; }
     #sidebar { width: 56; border: round cyan; padding: 0 1; }
     #sidebar Static { margin-bottom: 1; }
+    .sidebar-title { background: cyan; color: black; text-style: bold; padding: 0 1; }
+    .sidebar-actions { height: 1; margin-top: 1; }
+    .sidebar-actions Button { margin-right: 2; }
+    AuditScreen { align: center middle; }
+    #audit { width: 104; height: 90%; border: thick cyan; padding: 1 2; background: $panel; }
+    .audit-row { height: auto; margin-top: 1; }
+    .audit-row Button { width: 34; }
+    .audit-note { margin: 1 0 0 2; width: 1fr; }
+    #audit-result { height: 1fr; margin-top: 1; }
     #activity-row { height: 1; }
     #activity { width: 1fr; height: 1; padding: 0 2; }
     #cancel { display: none; margin: 0 2; }
@@ -432,6 +531,7 @@ class SpendGateApp(App):
         Binding("f3", "command('whoami')", "Who am I"),
         Binding("f4", "command('inventory')", "Inventory"),
         Binding("f5", "command('policy')", "Policy"),
+        Binding("f6", "command('audit')", "Audit"),
         Binding("escape", "cancel_request", "Cancel / Quit"),
         Binding("ctrl+l", "command('clear')", "Clear"),
         Binding("ctrl+q", "quit", "Quit"),
@@ -458,6 +558,12 @@ class SpendGateApp(App):
                 yield Static(id="budgets")
                 yield Static(id="last")
                 yield Static(id="orders")
+                yield Label("ACTIONS", classes="sidebar-title")
+                with Horizontal(classes="sidebar-actions"):
+                    yield Button("📊 Report", id="action-report", compact=True)
+                    yield Button("🎛️ Policy", id="action-policy", compact=True)
+                with Horizontal(classes="sidebar-actions"):
+                    yield Button("🧾 Audit & Export", id="action-audit", compact=True, variant="primary")
         with Horizontal(id="activity-row"):
             yield Static(id="activity")
             yield Button("■ Cancel (Esc)", id="cancel", variant="error", compact=True)
@@ -577,6 +683,8 @@ class SpendGateApp(App):
             self.write_log(ui.inventory_panel(agent.inventory_text()))
         elif command in ("cancel", "stop"):
             self.action_cancel_request()
+        elif command == "audit":
+            self.push_screen(AuditScreen(agent.SESSION))
         elif command == "policy":
             self.push_screen(PolicyScreen(agent.SESSION))
         elif command == "clear":
@@ -607,8 +715,9 @@ class SpendGateApp(App):
         self.write_log(ui.result_text("Cancelling the request…", style="yellow"))
 
     def on_button_pressed(self, event: Button.Pressed):
-        if event.button.id == "cancel":
-            self.action_cancel_request()
+        actions = {"cancel": "cancel", "action-report": "report", "action-policy": "policy", "action-audit": "audit"}
+        if event.button.id in actions:
+            self.action_command(actions[event.button.id])
 
     # Quit right away when idle; ask first while a request is running.
     # A plain def, not "async def": an async function called without

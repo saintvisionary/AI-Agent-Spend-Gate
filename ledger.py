@@ -5,10 +5,10 @@
 # left before it decides, and every decision is written here afterwards.
 # Budgets and spending live in memory for one session. The audit log is a
 # CSV file that keeps growing across sessions, so nothing is ever lost.
-import csv
 import os
 import time
 
+import audit_chain
 import policy
 
 # How much each department can spend in this period. Made-up numbers in
@@ -52,33 +52,15 @@ def record_order(user, department, vendor, item, quantity, amount):
 
 
 # Writes one decision to the audit log. source says which control made it:
-# "guardrail" (Decider 2B), "price check", or "spend gate" (the rules).
+# "guardrail" (Decider 2B), "catalog check", or "spend gate" (the rules).
+# Each row is hash-chained to the one before it (see audit_chain.py), so an
+# edited or deleted row shows up when the log is verified.
 def audit(user, department, source, vendor, item, quantity, category, amount, decision, reason):
-    # Create logs/ the first time, and write the header row once.
-    os.makedirs("logs", exist_ok=True)
-    set_aside_old_log()
-    new_file = not os.path.exists(AUDIT_LOG)
+    values = [time.strftime("%Y-%m-%d %H:%M:%S"), AGENT_ID, user, department, source,
+              vendor, item, quantity, category, amount, decision, reason]
     try:
-        with open(AUDIT_LOG, "a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            if new_file:
-                writer.writerow(AUDIT_COLUMNS)
-            writer.writerow([
-                time.strftime("%Y-%m-%d %H:%M:%S"), AGENT_ID, user, department, source,
-                vendor, item, quantity, category, amount, decision, reason,
-            ])
+        audit_chain.append_row(AUDIT_LOG, AUDIT_COLUMNS, values)
     except OSError as error:
         # Logging must never crash the agent, but a missing log is a problem
         # someone needs to see, so say it loudly.
         print(f"WARNING: could not write the audit log: {error}")
-
-
-# If the log on disk has different columns (an older version), rename it
-# instead of mixing two formats in one file. Old rows are kept, not deleted.
-def set_aside_old_log():
-    if not os.path.exists(AUDIT_LOG):
-        return
-    with open(AUDIT_LOG, newline="", encoding="utf-8") as f:
-        header = f.readline().strip()
-    if header != ",".join(AUDIT_COLUMNS):
-        os.replace(AUDIT_LOG, AUDIT_LOG.replace(".csv", f"_old_{int(time.time())}.csv"))

@@ -42,7 +42,7 @@
   <tr>
     <td width="33%" valign="top"><h3>🎛️ No-code policy</h3>Department leaders change budgets and limits in the app. The agent never can.</td>
     <td width="33%" valign="top"><h3>⏹️ Cancel any time</h3>Esc stops a check in under 2 seconds. Nothing is ever half-ordered.</td>
-    <td width="33%" valign="top"><h3>🧾 Full audit trail</h3>Every decision and every policy change, with who, what and why.</td>
+    <td width="33%" valign="top"><h3>🧾 Audit-ready</h3>Tamper-evident logs, a one-click audit pack, and the policy exported as Terraform.</td>
   </tr>
 </table>
 
@@ -73,7 +73,7 @@ A purchasing assistant for eight departments that runs in your terminal. You ask
 | You are | Look at |
 |:---|:---|
 | 🏁 **A hackathon judge** | [The decision handed to Decider 2B](#the-decision-handed-to-decider-2b) · [the reusable pattern](decision_pattern/) · [measured latency](#latency) · [live runs and Bedrock status](#live-runs) |
-| 💼 **A recruiter or hiring manager** | [Departments, roles and policy](#departments-roles-and-policy) (IAM in practice) · [design decisions](#design-decisions) · [what the live runs taught me](#what-the-live-runs-taught-me) |
+| 💼 **A recruiter or hiring manager** | [Departments, roles and policy](#departments-roles-and-policy) (IAM in practice) · [audits and policy as code](#audits-and-policy-as-code) · [design decisions](#design-decisions) · [what the live runs taught me](#what-the-live-runs-taught-me) |
 | 🛠️ **An engineer** | [Get started](#get-started) · [use it](#use-it) · [how it works](#how-it-works) · [project files](#project-files) · `python -m unittest discover tests` |
 
 ---
@@ -241,6 +241,7 @@ A full-screen terminal app built with [Textual](https://github.com/Textualize/te
 | F3 | `whoami` | Who you are, your role, your budget |
 | F4 | `inventory` | Your department's items |
 | F5 | `policy` | The rules; leaders and the owner can change them here |
+| F6 | `audit` | **Audit & Export:** audit pack, log integrity check, policy as Terraform |
 | Esc | `cancel` / `stop` | Stops the running request at once. Nothing more gets ordered. When nothing is running, Esc offers to quit |
 | Ctrl+L | `clear` | Clears the log |
 | Ctrl+Q | `quit` | Quits (asks first if a request is running) |
@@ -484,7 +485,45 @@ Eight departments share one catalog of 15 items (all made up, in [`catalog.py`](
 - **Ten approved vendors, plus unapproved bait.** Quickship Depot and Bargain Tech Outlet are often cheapest but aren't approved, so the Spend Gate blocks them.
 - **Decider's category question is built from the live policy.** Its options match the policy's category names exactly (plus "gift cards", so a cash-like item can still be named). Otherwise an honest "it hardware" order would be denied because Decider could only say "electronics".
 
-`python -m unittest discover tests` runs 22 tests of these rules (no LLM or Decider needed).
+`python -m unittest discover tests` runs 32 tests of these rules (no LLM or Decider needed).
+
+---
+
+## Audits and policy as code
+
+Click **🧾 Audit & Export** in the sidebar (or press F6). One button per job:
+
+| Button | What you get | Who can use it |
+|:---|:---|:---|
+| **🧾 Generate audit pack** | A dated evidence folder for internal or external auditors (below) | App owner (all departments) · leaders (their own department) |
+| **🔗 Verify logs** | Re-checks both logs' hash chains; shows the exact row if anything was edited, deleted or moved | Everyone |
+| **🏗️ Export policy as Terraform** | The purchasing policy as reviewable infrastructure code | App owner only |
+| **📂 Open folder** | Opens the export in Explorer or Finder | After an export |
+
+Buttons your role can't use are greyed out **with the reason shown**, so the permission model is visible instead of hidden.
+
+**The audit pack** (`exports/audit-<date>-<time>/`):
+
+| File | What an auditor uses it for |
+|:---|:---|
+| `audit_report.md` | The summary: scope, period, control results, **exceptions** (denied, blocked, human-decided, cancelled), policy changes, log integrity |
+| `decisions.csv` | Every purchase decision in scope, from every control |
+| `policy_changes.csv` | Every policy change: who, role, old value, new value |
+| `access_review.csv` | Who holds which role |
+| `entitlements.csv` | Which department may buy which item |
+| `policy.json` | The exact policy in force, with its SHA-256 in the report |
+| `manifest.json` | SHA-256 of every file, so the pack can't be edited after it's handed over |
+
+**Tamper-evident logs.** Every row of the purchase log and the policy-change log stores a hash chain: its SHA-256 covers the previous row's hash plus its own values. Change a DENY to APPROVED, or delete a row, and verification points at the exact row. The honest limit: someone who can rewrite the *whole* file can recompute the chain. That's why each audit pack records the latest hash (the head), and two packs from different days must agree up to the older head. In production, the head would also go somewhere the writer can't edit (a SIEM, or a write-once S3 bucket).
+
+**Policy as Terraform** (`exports/terraform-<date>-<time>/`):
+
+- `terraform.tfvars.json`: the policy values right now
+- `variables.tf`: typed variables whose **validation blocks are generated from the app's hard limits** (approval limit ≤ $5,000, no cash-like categories, budgets ≤ $10,000). A bad policy fails at `terraform plan`, before it reaches AWS, and the app and Terraform can't drift apart.
+- `main.tf`: matches the [reference architecture](#reference-architecture-on-aws): a versioned, encrypted, private S3 bucket holding `policy.json` (every version kept for the audit trail), and a least-privilege IAM policy that lets the Spend Gate **read** it and nothing else.
+- **People are left out on purpose.** The roster belongs in the identity provider (for example IAM Identity Center groups), not in infrastructure code.
+
+Exports go to `exports/`, which is in `.gitignore`: audit packs contain names and decisions and should be handed over, not committed.
 
 ---
 
@@ -713,8 +752,10 @@ The Spend Gate runs on ECS Fargate in a private subnet, loads its policy from S3
 | [`catalog.py`](catalog.py) | Departments, the 15 items and who uses each (the entitlements), vendor quotes, category descriptions |
 | [`policy.json`](policy.json) | The purchasing policy and the demo roster (made-up people) |
 | [`policy.py`](policy.py) | Loads and saves the policy; strict defaults if it can't be read |
+| [`audit_chain.py`](audit_chain.py) | Tamper-evident logs: the hash chain and its verification |
+| [`audit_export.py`](audit_export.py) | Audit packs, log verification, policy as Terraform, and who may export what |
 | [`policy_admin.py`](policy_admin.py) | Who can change what, the hard limits, validation, and the change audit log |
-| [`tests/`](tests/) | Unit tests: policy permissions, hard limits, entitlements, catalog consistency |
+| [`tests/`](tests/) | 32 unit tests: policy permissions, hard limits, entitlements, catalog consistency, tamper detection, audit scope, Terraform limits |
 | [`ledger.py`](ledger.py) | Department budgets, order history, `report`, and the audit log |
 | [`decision_pattern/plain_display.py`](decision_pattern/plain_display.py) | The guardrail's default display (plain text and a progress bar) |
 | [`test_guardrail.py`](test_guardrail.py) | Runs the guardrail on 12 fixed cases against Decider, without an LLM (`--compare` for short vs full state) |

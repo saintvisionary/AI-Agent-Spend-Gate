@@ -1,0 +1,131 @@
+{
+  "allowed_categories": [
+    "office supplies",
+    "advertising",
+    "it hardware",
+    "software",
+    "legal services",
+    "lab supplies",
+    "safety equipment",
+    "security supplies",
+    "training"
+  ],
+  "approved_vendors": [
+    "Northbeam Office Supply",
+    "Paperleaf Co",
+    "Cobalt Systems",
+    "Sentinel Security Supply",
+    "Brightline Software",
+    "Meridian Legal Research",
+    "Helix Lab Supply",
+    "Summit Learning",
+    "Beacon Print & Promo"
+  ],
+  "approval_over": 500,
+  "department_budgets": {
+    "operations": 1000,
+    "marketing": 500,
+    "legal": 1500,
+    "security": 2500,
+    "finance and accounting": 1200,
+    "research and development": 4000,
+    "information technology": 8000,
+    "human resources": 1000
+  },
+  "reorder": {
+    "printer paper": {
+      "reorder_at": 10,
+      "order_qty": 5
+    },
+    "blue pens": {
+      "reorder_at": 10,
+      "order_qty": 10
+    },
+    "file folders": {
+      "reorder_at": 5,
+      "order_qty": 4
+    },
+    "receipt printer rolls": {
+      "reorder_at": 4,
+      "order_qty": 6
+    },
+    "laptops": {
+      "reorder_at": 5,
+      "order_qty": 2
+    },
+    "monitors": {
+      "reorder_at": 6,
+      "order_qty": 4
+    },
+    "usb security keys": {
+      "reorder_at": 20,
+      "order_qty": 25
+    },
+    "badge card stock": {
+      "reorder_at": 2,
+      "order_qty": 3
+    },
+    "office suite licenses": {
+      "reorder_at": 10,
+      "order_qty": 10
+    },
+    "case law database seats": {
+      "reorder_at": 3,
+      "order_qty": 2
+    },
+    "lab gloves": {
+      "reorder_at": 10,
+      "order_qty": 6
+    },
+    "3d printer filament": {
+      "reorder_at": 4,
+      "order_qty": 4
+    },
+    "safety vests": {
+      "reorder_at": 6,
+      "order_qty": 6
+    },
+    "compliance training seats": {
+      "reorder_at": 5,
+      "order_qty": 10
+    },
+    "trade show banners": {
+      "reorder_at": 2,
+      "order_qty": 2
+    }
+  },
+  "roster": {
+    "Tyler Bynum": {
+      "role": "owner",
+      "department": "security"
+    },
+    "Ruth Okafor": {
+      "role": "leader",
+      "department": "operations"
+    },
+    "Kim Alvarez": {
+      "role": "leader",
+      "department": "marketing"
+    },
+    "Amanda Chen": {
+      "role": "leader",
+      "department": "legal"
+    },
+    "Kevin Walsh": {
+      "role": "leader",
+      "department": "finance and accounting"
+    },
+    "Brooke Patel": {
+      "role": "leader",
+      "department": "research and development"
+    },
+    "Rick Sullivan": {
+      "role": "leader",
+      "department": "information technology"
+    },
+    "John Rivera": {
+      "role": "leader",
+      "department": "human resources"
+    }
+  }
+}

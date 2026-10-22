@@ -3,4 +3,5 @@ strands-agents==1.61.1    # the agent framework (tools, interventions)
 strands-decider==0.2.0    # runs the Decider 2B server (pulls in PyTorch)
 boto3==1.43.114           # AWS SDK, used to call Amazon Bedrock
 rich==15.0.0              # terminal display (panels, tables, spinners); also used by strands-decider
+textual==8.2.8            # the full-screen app (app.py); built on rich
 ollama==0.6.3            # optional: only for LLM_PROVIDER=ollama

@@ -1,7 +1,8 @@
 # start.py
 # One command to set up and run everything:
 #
-#     python start.py              interactive session
+#     python start.py              the full-screen app (app.py)
+#     python start.py --cli        the simple terminal version (agent.py)
 #     python start.py restock      one scenario, then exit
 #
 # It works with any Python 3.10+ and needs nothing installed first. It does
@@ -186,10 +187,20 @@ def wait_for_decider(process, log_path):
 # STEP 5-6: RUN, THEN CLEAN UP
 # ---------------------------------------------------------------
 
+# No arguments: the full-screen app (app.py).
+# --cli: the simple terminal version (agent.py).
+# A scenario or request: run it once in the simple version and exit.
 def run_agent(llm):
     env = dict(os.environ, LLM_PROVIDER=llm, OLLAMA_MODEL=OLLAMA_MODEL)
-    say("Starting the agent\n")
-    command = [venv_file("python"), os.path.join(PROJECT, "agent.py")] + sys.argv[1:]
+    args = sys.argv[1:]
+    if not args:
+        say("Starting the app\n")
+        command = [venv_file("python"), os.path.join(PROJECT, "app.py")]
+    else:
+        if args[0] == "--cli":
+            args = args[1:]
+        say("Starting the agent\n")
+        command = [venv_file("python"), os.path.join(PROJECT, "agent.py")] + args
     return subprocess.run(command, env=env, cwd=PROJECT).returncode
 
 

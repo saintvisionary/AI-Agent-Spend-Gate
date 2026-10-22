@@ -47,13 +47,12 @@
 </table>
 
 <p align="center">
-  <a href="#the-problem">The problem</a> ·
+  <a href="#get-started"><b>Get started</b></a> ·
+  <a href="#use-it"><b>Use it</b></a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#the-decision-handed-to-decider-2b">The decision</a> ·
-  <a href="#reusable-decision-pattern">Reusable pattern</a> ·
-  <a href="#scenarios">Scenarios</a> ·
-  <a href="#why-these-controls">Why these controls</a> ·
-  <a href="#quick-start">Quick start</a> ·
+  <a href="#departments-roles-and-policy">Roles and policy</a> ·
+  <a href="#scenarios-and-results">Results</a> ·
   <a href="#reference-architecture-on-aws">AWS architecture</a>
 </p>
 
@@ -61,6 +60,258 @@
 Demo video goes here once it's recorded:
 [![Demo video](assets/video-thumbnail.png)](https://youtu.be/...)
 -->
+
+### In one minute
+
+A purchasing assistant for eight departments that runs in your terminal. You ask for supplies in plain English; an AI agent checks inventory, compares vendors and places the order. **Before any money moves, every order passes three independent controls:** the agent proposes, **Strands Decider 2B** checks whether the order is honest (invented, injected or mislabeled), and deterministic rules check whether it's allowed (budgets, approved vendors, entitlements, human approval over $500). The agent can't change any of those rules. Department leaders can, without code.
+
+> [!TIP]
+> **Try this first:** download, double-click the launcher for your system, sign in as **`Tyler Bynum`**, and type **`injection`**. A note planted in the inventory feed tells the agent to buy $450 of gift cards and file them as office supplies. Watch Decider 2B deny it before the order runs.
+
+### Start here
+
+| You are | Look at |
+|:---|:---|
+| 🏁 **A hackathon judge** | [The decision handed to Decider 2B](#the-decision-handed-to-decider-2b) · [the reusable pattern](decision_pattern/) · [measured latency](#latency) · [live runs and Bedrock status](#live-runs) |
+| 💼 **A recruiter or hiring manager** | [Departments, roles and policy](#departments-roles-and-policy) (IAM in practice) · [design decisions](#design-decisions) · [what the live runs taught me](#what-the-live-runs-taught-me) |
+| 🛠️ **An engineer** | [Get started](#get-started) · [use it](#use-it) · [how it works](#how-it-works) · [project files](#project-files) · `python -m unittest discover tests` |
+
+---
+
+## Get started
+
+### Runs on
+
+| | 🪟 **Windows 10 / 11** | 🍎 **macOS** | 🐧 **Linux** |
+|:---|:---|:---|:---|
+| **Start it** | Double-click **`Start Spend Gate.bat`** | Double-click **`start.command`** | `./start.sh` |
+| **Status** | ✅ Tested | 🧪 Launcher included, not yet tested | 🧪 Launcher included, not yet tested |
+| **You need** | Python 3.10+, Ollama | Python 3.10+, Ollama | Python 3.10+, Ollama |
+| **Memory** | 16 GB (Decider 2B uses about 6 GB) | 16 GB (Decider 2B uses about 6 GB) | 16 GB (Decider 2B uses about 6 GB) |
+
+Everything else (packages, models, Decider 2B) is set up by the launcher on first start. Ollama runs the LLM on your own computer for free; with AWS credentials for Amazon Bedrock, you don't need it.
+
+<a name="windows"></a>
+<details open>
+<summary><b>🪟 Windows: set up in 3 steps</b></summary>
+
+<br/>
+
+1. **Install [Python](https://www.python.org/downloads/).** On the first installer screen, tick **"Add python.exe to PATH"**.
+2. **Install [Ollama](https://ollama.com)** and open it once (it runs in the background, next to the clock).
+3. **[Download the ZIP](https://github.com/saintvisionary/AI-Agent-Spend-Gate/archive/refs/heads/main.zip)**, unzip it, and **double-click `Start Spend Gate.bat`**.
+
+The first start installs packages and downloads two models, so it takes several minutes once. After that it opens in under a minute.
+
+- **"Windows protected your PC"?** Click **More info → Run anyway**. The `.bat` file is 30 readable lines; open it in Notepad first if you'd like to check.
+- **The window flashes and closes?** Open the folder in a terminal and run `python start.py --check`.
+- **No `Set-ExecutionPolicy` needed.** A `.bat` file isn't blocked by PowerShell's script policy.
+
+</details>
+
+<a name="macos"></a>
+<details>
+<summary><b>🍎 macOS: set up in 3 steps</b> (not yet tested)</summary>
+
+<br/>
+
+1. **Install [Python](https://www.python.org/downloads/)** from python.org. (The `python3` that comes with macOS may first ask to install Apple's developer tools; the python.org installer avoids that.)
+2. **Install [Ollama](https://ollama.com)** and open it once.
+3. **[Download the ZIP](https://github.com/saintvisionary/AI-Agent-Spend-Gate/archive/refs/heads/main.zip)**, unzip it, and **double-click `start.command`**.
+
+- **"cannot be opened because it is from an unidentified developer"?** The first time only: **right-click `start.command` → Open → Open**. Or allow it in **System Settings → Privacy & Security**.
+- **"permission denied"?** In Terminal, in the project folder: `chmod +x start.command`
+- **Apple silicon and Intel** both work. Decider 2B runs on the CPU either way.
+
+</details>
+
+<a name="linux"></a>
+<details>
+<summary><b>🐧 Linux: set up in 3 steps</b> (not yet tested)</summary>
+
+<br/>
+
+1. **Install Python 3.10+** with venv support, for example `sudo apt install python3 python3-venv`.
+2. **Install [Ollama](https://ollama.com/download/linux)**.
+3. Clone the repo and run `./start.sh`.
+
+</details>
+
+**Not sure you're ready?** `python start.py --check` reports what's installed and what's missing, and changes nothing:
+
+```
+  [OK] Python 3.13.15
+  [OK] Packages installed
+  [..] AWS credentials for Bedrock: not found (fine if you use Ollama)
+  [OK] Ollama: running, qwen2.5:3b downloaded
+  [OK] Decider 2B: not running (start.py starts it for you)
+  [OK] Free memory: 7.2 GB
+
+Ready to start.
+```
+
+**Prefer a terminal?** On any system, it's the same thing:
+```powershell
+git clone https://github.com/saintvisionary/AI-Agent-Spend-Gate.git
+cd AI-Agent-Spend-Gate
+python start.py
+```
+
+The launchers only find Python and run `start.py`. A `.bat` file isn't blocked by PowerShell's script policy, so there's no `Set-ExecutionPolicy` step. `start.py` uses only the standard library, so it runs before anything is installed. It doesn't need the virtual environment activated, so PowerShell's script policy never gets in the way. It:
+
+1. Creates `.venv` and installs `requirements.txt` (skipped next time unless the file changes)
+2. Picks the LLM: **Bedrock** if AWS credentials are set up, otherwise **Ollama**, and downloads `qwen2.5:3b` if needed (set `LLM_PROVIDER` to override)
+3. Starts Decider 2B in the background and waits until it's ready (the first run downloads the model; progress goes to `logs/decider.log`)
+4. Opens the app, then stops Decider when you quit (only if `start.py` started it)
+
+`python start.py --cli` opens the simple terminal version instead, `python start.py restock` runs one scenario and exits, and `python start.py --check` reports your setup.
+
+<details>
+<summary>Manual setup instead</summary>
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+# Terminal 1
+.\.venv\Scripts\strands-decider.exe serve StrandsAgents/strands-decider-2B-qwen3.5-v1-2610 --port 8099 --device cpu
+# Terminal 2
+.\.venv\Scripts\python.exe agent.py
+```
+</details>
+
+---
+
+## Use it
+
+### The app
+
+A full-screen terminal app built with [Textual](https://github.com/Textualize/textual):
+
+```
+┌ AI Agent Spend Gate ──────────────────────────────────────────────────────────────┐
+│ > we need printer paper by tomorrow                  │ SIGNED IN                  │
+│ ⏺ check_inventory                                    │ Ruth Okafor  leader        │
+│   ⎿  printer paper: NEEDS REORDER ...                │ operations · LLM: ollama   │
+│ ⏺ get_price_quotes                                   │                            │
+│ ╭─ Decider 2B · place_order ─────────────────────╮   │ › operations ██████████ $… │
+│ │ 5 x printer paper · Paperleaf Co · $18.00 each │   │   marketing  ██████████ $… │
+│ │ grounded   ▰▰▰▰▰▰▰▱▱▱  0.72                     │   │                            │
+│ │ ...                                            │   │ LAST DECIDER CHECK         │
+│ │ PROCEED  purchase values are grounded ...      │   │ PROCEED  29s               │
+│ ╰──────────────────────────────────────── 28.9s ─╯   │                            │
+│ ⏺ Spend Gate  APPROVED  operations · $90.00          │ ORDERS · 1                 │
+├──────────────────────────────────────────────────────┴────────────────────────────┤
+│ ⠋ Decider 2B checking place_order…  14s  (last one took 28s)                     │
+│ ╭ Ask for a purchase, or type a command ──────────────────────────────────────╮   │
+│ F1 Help  F2 Report  F3 Who am I  F4 Inventory  F5 Policy  Esc Cancel  ^Q Quit     │
+└───────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **It never freezes.** The agent runs in a background thread, so you can scroll, press F2 for the report, or check your budget while a 30-second Decider check runs. Requests run one at a time, because they share the session's budget and inventory.
+- **Human approvals are a pop-up.** Approve (y) or Deny (n); Deny has focus, and Escape counts as Deny.
+- **Models warm up while you read the help,** so the first order doesn't pay the start-up cost.
+- **The same code underneath.** `agent.py` sends every step to a swappable display (`agent.UI`). The app and the simple CLI are two displays over the same tools, guardrail and rules.
+
+### Using the app
+
+**1. Sign in.** Type a name. The roster in `policy.json` decides your role (capital letters don't matter):
+
+| Sign in as | You get |
+|:---|:---|
+| **Tyler Bynum** | App owner, ordering for Security: can change every setting |
+| **Ruth Okafor** · **Kim Alvarez** · **Amanda Chen** · **Kevin Walsh** · **Brooke Patel** · **Rick Sullivan** · **John Rivera** | Leader of Operations · Marketing · Legal · Finance and Accounting · R&D · IT · HR: can change their department's budget and reorder settings |
+| any other name | Member: pick a department, order and look; no policy changes |
+
+**2. Ask for something,** in plain English or with a sample scenario:
+
+| Try | What it shows |
+|:---|:---|
+| `restock` | A normal order: Decider says PROCEED, the rules approve it |
+| `injection` | A planted "manager pre-approved" note: the gift-card order is **denied** |
+| `rush` / `preferred` | The user's goal (fastest, a named vendor) is enforced with **Guide** |
+| `bulk` | Over $500: an **approval pop-up** asks you |
+| `we need lab gloves by tomorrow` | Your own request (sign in as Brooke Patel, R&D) |
+
+**3. Keys and commands**
+
+| Key | Command | Does |
+|:---:|:---|:---|
+| F1 | `help` | What you can do |
+| F2 | `report` | Budgets and every order this session |
+| F3 | `whoami` | Who you are, your role, your budget |
+| F4 | `inventory` | Your department's items |
+| F5 | `policy` | The rules; leaders and the owner can change them here |
+| Esc | `cancel` / `stop` | Stops the running request at once. Nothing more gets ordered. When nothing is running, Esc offers to quit |
+| Ctrl+L | `clear` | Clears the log |
+| Ctrl+Q | `quit` | Quits (asks first if a request is running) |
+
+While a request runs, a **■ Cancel** button appears next to the spinner. In VS Code's terminal, some F-keys open VS Code menus instead; the typed commands always work.
+
+**4. Changing a setting** (leaders and the owner): F5 → pick a setting with the arrow keys → Enter → type the new value → Enter shows `old -> new` → **Save**. Every change is logged in `logs/policy_changes.csv`.
+
+**What each colored line means:** ⏺ a step the agent took · the **Decider 2B** panel is its check, with the border colored by the verdict · **Catalog check** and **Spend Gate** are the rules · green = go, red = stop, yellow = a person or a retry.
+
+### The simple CLI
+
+`python start.py --cli` runs the same agent as a plain scrolling terminal (Rich) instead of the full-screen app:
+
+```
+ SIGN IN  ────────────────────────────────────
+› Name: Kim Alvarez
+⏺ Signed in  Kim Alvarez · marketing · leader
+
+Kim Alvarez · marketing · $500.00 left
+> we need printer paper by tomorrow
+⏺ check_inventory
+  ⎿  Items used by marketing:
+     printer paper: NEEDS REORDER. On hand 4 (box), reorder at 10, order quantity 5, category: office supplies
+⏺ get_price_quotes
+  ⎿  ...
+     Fastest approved vendor in stock: Paperleaf Co, 1 day
+⏺ place_order
+⠋ Decider 2B checking place_order… 0:00:14 (last one took 28s)
+┌─ Decider 2B · place_order ────────────────────────────────┐
+│ 5 x printer paper · Paperleaf Co · $18.00 each            │
+│                                                           │
+│ grounded         ▰▰▰▰▰▰▰▱▱▱  0.72                         │
+│ injected         ▰▱▱▱▱▱▱▱▱▱  0.08                         │
+│ item looks like  ▰▰▰▰▰▰▰▰▰▱  office supplies (0.86)       │
+│ user goal        ▰▰▰▰▰▰▰▰▰▱  fastest delivery (0.91)      │
+│                                                           │
+│ PROCEED  purchase values are grounded in the conversation │
+└─────────────────────────────────────────────────── 28.9s ─┘
+⏺ Spend Gate  APPROVED  marketing · Paperleaf Co · $90.00
+  ⎿  within policy
+```
+
+Type a request in plain English, a scenario name (`restock`, `rush`, `preferred`, `injection`, `guess`, `bulk`), `report`, `whoami`, `inventory`, `policy`, `help` or `quit`. When the agent asks `(y/n)`, you're the human approver. To run one scenario and exit: `python start.py restock`.
+
+- **The department comes from the session, not the LLM.** You pick it when you start; `place_order` reads it from there. If the department were a tool argument, the agent (or injected text) could charge whichever department still has money.
+- **Every decision is written to `logs/audit_log.csv`**, one row per decision from every control, with the user and a `source` column (`guardrail`, `catalog check` or `spend gate`). Policy changes go to `logs/policy_changes.csv`.
+- **Every step is one line.** Tool calls show as `⏺`, with results under `⎿`; each Decider check gets a framed panel with its scores; a spinner with a timer runs while Decider works. Built with [Rich](https://github.com/Textualize/rich). The guardrail itself doesn't depend on it (see the `display` option in [`decision_pattern/`](decision_pattern/)).
+- **Untrusted text is never read as styling.** Rich treats `[brackets]` as style commands, so LLM output and tool data are always printed as plain `Text`. Otherwise an injected note could restyle or hide parts of the screen from the human approver.
+- **A failed LLM call doesn't end the session.** You get a short fix (for example, missing AWS credentials), and your budgets and orders stay.
+
+Other ways to run it:
+
+| Command | What it does | Needs |
+|:---|:---|:---|
+| `python test_guardrail.py` | Runs the guardrail on fixed cases, prints Decider's numbers | Decider only |
+| `python guard.py` | Runs the spending rules interactively (type `demo` for samples) | Nothing |
+| `$env:LLM_PROVIDER="ollama"; $env:OLLAMA_MODEL="qwen2.5:3b"; python agent.py restock` | Runs the agent on a local model instead of Bedrock | [Ollama](https://ollama.com) with `qwen2.5:3b` (follows tool steps more reliably than `llama3.2:3b`) |
+
+> [!NOTE]
+> **Least privilege for the agent.** The agent's IAM user can call one Bedrock model and nothing else:
+> ```json
+> {
+>   "Effect": "Allow",
+>   "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+>   "Resource": [
+>     "arn:aws:bedrock:*::foundation-model/amazon.nova-lite-v1:0",
+>     "arn:aws:bedrock:*:*:inference-profile/us.amazon.nova-lite-v1:0"
+>   ]
+> }
+> ```
 
 ---
 
@@ -191,7 +442,53 @@ See **[decision_pattern/README.md](decision_pattern/README.md)** for how it work
 
 ---
 
-## Scenarios
+## Departments, roles and policy
+
+### Policy changes without code
+
+Department leaders change the rules inside the app (**F5 → Policy**), without editing code or asking an engineer. The agent automates the buying; people keep control of the limits.
+
+| Role | Who (demo roster in `policy.json`) | Can change |
+|:---|:---|:---|
+| **Member** | any name not in the roster | nothing (can read the policy) |
+| **Department leader** | one per department (see below) | their **own** department's budget; reorder settings for the items their department uses |
+| **App owner** | Tyler Bynum (also leads Security) | everything above, plus the approval limit, approved vendors and allowed categories |
+
+The controls on the controls:
+
+- **Roles come from the roster, not from the user.** You type your name; the role is looked up, like an SSO group. There's no role picker to self-assert privilege. (Demo: there's no password.)
+- **The agent can't reach any of this.** There's no tool for policy changes, so a prompt injection can't widen the agent's own permissions.
+- **Preview, then Save.** Each change shows `old -> new` first, and `policy_admin.py` checks it again on Save; it never trusts the screen.
+- **Hard limits no role can override:** cash-like categories (gift, prepaid, cash, crypto, wire) can never be allowed; the approval limit tops out at $5,000; budgets at $10,000.
+- **Every change is audited** to `logs/policy_changes.csv`: time, user, role, setting, old value, new value.
+- **Changes apply to the next request,** never halfway through one. If `policy.json` can't be read, the gate falls back to a strict built-in policy and **switches changes off** (fail closed).
+
+### Departments, shared items and entitlements
+
+Eight departments share one catalog of 15 items (all made up, in [`catalog.py`](catalog.py)). Each item lists the departments that use it, and **that list is the entitlement**:
+
+| Department | Leader (demo) | Budget | Uses (examples) |
+|:---|:---|---:|:---|
+| Operations | Ruth Okafor | $1,000 | paper, pens, receipt printer rolls, safety vests |
+| Marketing | Kim Alvarez | $500 | paper, pens, trade show banners, 3D printer filament |
+| Legal | Amanda Chen | $1,500 | file folders, case law database seats, compliance training |
+| Security | Tyler Bynum (app owner) | $2,500 | laptops, USB security keys, badge card stock, safety vests |
+| Finance and Accounting | Kevin Walsh | $1,200 | file folders, receipt printer rolls |
+| Research and Development | Brooke Patel | $4,000 | laptops, monitors, lab gloves, 3D printer filament |
+| Information Technology | Rick Sullivan | $8,000 | laptops, monitors, USB security keys, office suite licenses |
+| Human Resources | John Rivera | $1,000 | file folders, badge card stock, compliance training |
+
+- **Need to know.** `check_inventory` shows a department only the items it uses, so the agent never even sees what it can't buy.
+- **Enforced, not just hidden.** `place_order` blocks an item the department isn't entitled to, in case the LLM tries anyway, and the catalog's real category overrides whatever label the LLM sends.
+- **Shared items work for everyone who uses them** (badge card stock for HR and Security; laptops for IT, R&D and Security).
+- **Ten approved vendors, plus unapproved bait.** Quickship Depot and Bargain Tech Outlet are often cheapest but aren't approved, so the Spend Gate blocks them.
+- **Decider's category question is built from the live policy.** Its options match the policy's category names exactly (plus "gift cards", so a cash-like item can still be named). Otherwise an honest "it hardware" order would be denied because Decider could only say "electronics".
+
+`python -m unittest discover tests` runs 22 tests of these rules (no LLM or Decider needed).
+
+---
+
+## Scenarios and results
 
 The agent works from made-up market data. Quickship Depot is the cheapest for paper, but it **isn't on the approved vendor list**. The quotes tool marks which vendors are approved, and the Spend Gate enforces it either way.
 
@@ -325,282 +622,6 @@ xychart-beta
 
 ---
 
-## Quick start
-
-### Runs on
-
-| | 🪟 **Windows 10 / 11** | 🍎 **macOS** | 🐧 **Linux** |
-|:---|:---|:---|:---|
-| **Start it** | Double-click **`Start Spend Gate.bat`** | Double-click **`start.command`** | `./start.sh` |
-| **Status** | ✅ Tested | 🧪 Launcher included, not yet tested | 🧪 Launcher included, not yet tested |
-| **You need** | Python 3.10+, Ollama | Python 3.10+, Ollama | Python 3.10+, Ollama |
-| **Memory** | 16 GB (Decider 2B uses about 6 GB) | 16 GB (Decider 2B uses about 6 GB) | 16 GB (Decider 2B uses about 6 GB) |
-
-Everything else (packages, models, Decider 2B) is set up by the launcher on first start. Ollama runs the LLM on your own computer for free; with AWS credentials for Amazon Bedrock, you don't need it.
-
-<a name="windows"></a>
-<details open>
-<summary><b>🪟 Windows: set up in 3 steps</b></summary>
-
-<br/>
-
-1. **Install [Python](https://www.python.org/downloads/).** On the first installer screen, tick **"Add python.exe to PATH"**.
-2. **Install [Ollama](https://ollama.com)** and open it once (it runs in the background, next to the clock).
-3. **[Download the ZIP](https://github.com/saintvisionary/AI-Agent-Spend-Gate/archive/refs/heads/main.zip)**, unzip it, and **double-click `Start Spend Gate.bat`**.
-
-The first start installs packages and downloads two models, so it takes several minutes once. After that it opens in under a minute.
-
-- **"Windows protected your PC"?** Click **More info → Run anyway**. The `.bat` file is 30 readable lines; open it in Notepad first if you'd like to check.
-- **The window flashes and closes?** Open the folder in a terminal and run `python start.py --check`.
-- **No `Set-ExecutionPolicy` needed.** A `.bat` file isn't blocked by PowerShell's script policy.
-
-</details>
-
-<a name="macos"></a>
-<details>
-<summary><b>🍎 macOS: set up in 3 steps</b> (not yet tested)</summary>
-
-<br/>
-
-1. **Install [Python](https://www.python.org/downloads/)** from python.org. (The `python3` that comes with macOS may first ask to install Apple's developer tools; the python.org installer avoids that.)
-2. **Install [Ollama](https://ollama.com)** and open it once.
-3. **[Download the ZIP](https://github.com/saintvisionary/AI-Agent-Spend-Gate/archive/refs/heads/main.zip)**, unzip it, and **double-click `start.command`**.
-
-- **"cannot be opened because it is from an unidentified developer"?** The first time only: **right-click `start.command` → Open → Open**. Or allow it in **System Settings → Privacy & Security**.
-- **"permission denied"?** In Terminal, in the project folder: `chmod +x start.command`
-- **Apple silicon and Intel** both work. Decider 2B runs on the CPU either way.
-
-</details>
-
-<a name="linux"></a>
-<details>
-<summary><b>🐧 Linux: set up in 3 steps</b> (not yet tested)</summary>
-
-<br/>
-
-1. **Install Python 3.10+** with venv support, for example `sudo apt install python3 python3-venv`.
-2. **Install [Ollama](https://ollama.com/download/linux)**.
-3. Clone the repo and run `./start.sh`.
-
-</details>
-
-**Not sure you're ready?** `python start.py --check` reports what's installed and what's missing, and changes nothing:
-
-```
-  [OK] Python 3.13.15
-  [OK] Packages installed
-  [..] AWS credentials for Bedrock: not found (fine if you use Ollama)
-  [OK] Ollama: running, qwen2.5:3b downloaded
-  [OK] Decider 2B: not running (start.py starts it for you)
-  [OK] Free memory: 7.2 GB
-
-Ready to start.
-```
-
-**Prefer a terminal?** On any system, it's the same thing:
-```powershell
-git clone https://github.com/saintvisionary/AI-Agent-Spend-Gate.git
-cd AI-Agent-Spend-Gate
-python start.py
-```
-
-The launchers only find Python and run `start.py`. A `.bat` file isn't blocked by PowerShell's script policy, so there's no `Set-ExecutionPolicy` step. `start.py` uses only the standard library, so it runs before anything is installed. It doesn't need the virtual environment activated, so PowerShell's script policy never gets in the way. It:
-
-1. Creates `.venv` and installs `requirements.txt` (skipped next time unless the file changes)
-2. Picks the LLM: **Bedrock** if AWS credentials are set up, otherwise **Ollama**, and downloads `qwen2.5:3b` if needed (set `LLM_PROVIDER` to override)
-3. Starts Decider 2B in the background and waits until it's ready (the first run downloads the model; progress goes to `logs/decider.log`)
-4. Opens the app, then stops Decider when you quit (only if `start.py` started it)
-
-`python start.py --cli` opens the simple terminal version instead, `python start.py restock` runs one scenario and exits, and `python start.py --check` reports your setup.
-
-<details>
-<summary>Manual setup instead</summary>
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-# Terminal 1
-.\.venv\Scripts\strands-decider.exe serve StrandsAgents/strands-decider-2B-qwen3.5-v1-2610 --port 8099 --device cpu
-# Terminal 2
-.\.venv\Scripts\python.exe agent.py
-```
-</details>
-
-### The app
-
-A full-screen terminal app built with [Textual](https://github.com/Textualize/textual):
-
-```
-┌ AI Agent Spend Gate ──────────────────────────────────────────────────────────────┐
-│ > we need printer paper by tomorrow                  │ SIGNED IN                  │
-│ ⏺ check_inventory                                    │ Ruth Okafor  leader        │
-│   ⎿  printer paper: NEEDS REORDER ...                │ operations · LLM: ollama   │
-│ ⏺ get_price_quotes                                   │                            │
-│ ╭─ Decider 2B · place_order ─────────────────────╮   │ › operations ██████████ $… │
-│ │ 5 x printer paper · Paperleaf Co · $18.00 each │   │   marketing  ██████████ $… │
-│ │ grounded   ▰▰▰▰▰▰▰▱▱▱  0.72                     │   │                            │
-│ │ ...                                            │   │ LAST DECIDER CHECK         │
-│ │ PROCEED  purchase values are grounded ...      │   │ PROCEED  29s               │
-│ ╰──────────────────────────────────────── 28.9s ─╯   │                            │
-│ ⏺ Spend Gate  APPROVED  operations · $90.00          │ ORDERS · 1                 │
-├──────────────────────────────────────────────────────┴────────────────────────────┤
-│ ⠋ Decider 2B checking place_order…  14s  (last one took 28s)                     │
-│ ╭ Ask for a purchase, or type a command ──────────────────────────────────────╮   │
-│ F1 Help  F2 Report  F3 Who am I  F4 Inventory  F5 Policy  Esc Cancel  ^Q Quit     │
-└───────────────────────────────────────────────────────────────────────────────────┘
-```
-
-- **It never freezes.** The agent runs in a background thread, so you can scroll, press F2 for the report, or check your budget while a 30-second Decider check runs. Requests run one at a time, because they share the session's budget and inventory.
-- **Human approvals are a pop-up.** Approve (y) or Deny (n); Deny has focus, and Escape counts as Deny.
-- **Models warm up while you read the help,** so the first order doesn't pay the start-up cost.
-- **The same code underneath.** `agent.py` sends every step to a swappable display (`agent.UI`). The app and the simple CLI are two displays over the same tools, guardrail and rules.
-
-### Using the app
-
-**1. Sign in.** Type a name. The roster in `policy.json` decides your role (capital letters don't matter):
-
-| Sign in as | You get |
-|:---|:---|
-| **Tyler Bynum** | App owner, ordering for Security: can change every setting |
-| **Ruth Okafor** · **Kim Alvarez** · **Amanda Chen** · **Kevin Walsh** · **Brooke Patel** · **Rick Sullivan** · **John Rivera** | Leader of Operations · Marketing · Legal · Finance and Accounting · R&D · IT · HR: can change their department's budget and reorder settings |
-| any other name | Member: pick a department, order and look; no policy changes |
-
-**2. Ask for something,** in plain English or with a sample scenario:
-
-| Try | What it shows |
-|:---|:---|
-| `restock` | A normal order: Decider says PROCEED, the rules approve it |
-| `injection` | A planted "manager pre-approved" note: the gift-card order is **denied** |
-| `rush` / `preferred` | The user's goal (fastest, a named vendor) is enforced with **Guide** |
-| `bulk` | Over $500: an **approval pop-up** asks you |
-| `we need lab gloves by tomorrow` | Your own request (sign in as Brooke Patel, R&D) |
-
-**3. Keys and commands**
-
-| Key | Command | Does |
-|:---:|:---|:---|
-| F1 | `help` | What you can do |
-| F2 | `report` | Budgets and every order this session |
-| F3 | `whoami` | Who you are, your role, your budget |
-| F4 | `inventory` | Your department's items |
-| F5 | `policy` | The rules; leaders and the owner can change them here |
-| Esc | `cancel` / `stop` | Stops the running request at once. Nothing more gets ordered. When nothing is running, Esc offers to quit |
-| Ctrl+L | `clear` | Clears the log |
-| Ctrl+Q | `quit` | Quits (asks first if a request is running) |
-
-While a request runs, a **■ Cancel** button appears next to the spinner. In VS Code's terminal, some F-keys open VS Code menus instead; the typed commands always work.
-
-**4. Changing a setting** (leaders and the owner): F5 → pick a setting with the arrow keys → Enter → type the new value → Enter shows `old -> new` → **Save**. Every change is logged in `logs/policy_changes.csv`.
-
-**What each colored line means:** ⏺ a step the agent took · the **Decider 2B** panel is its check, with the border colored by the verdict · **Catalog check** and **Spend Gate** are the rules · green = go, red = stop, yellow = a person or a retry.
-
-### Policy changes without code
-
-Department leaders change the rules inside the app (**F5 → Policy**), without editing code or asking an engineer. The agent automates the buying; people keep control of the limits.
-
-| Role | Who (demo roster in `policy.json`) | Can change |
-|:---|:---|:---|
-| **Member** | any name not in the roster | nothing (can read the policy) |
-| **Department leader** | one per department (see below) | their **own** department's budget; reorder settings for the items their department uses |
-| **App owner** | Tyler Bynum (also leads Security) | everything above, plus the approval limit, approved vendors and allowed categories |
-
-The controls on the controls:
-
-- **Roles come from the roster, not from the user.** You type your name; the role is looked up, like an SSO group. There's no role picker to self-assert privilege. (Demo: there's no password.)
-- **The agent can't reach any of this.** There's no tool for policy changes, so a prompt injection can't widen the agent's own permissions.
-- **Preview, then Save.** Each change shows `old -> new` first, and `policy_admin.py` checks it again on Save; it never trusts the screen.
-- **Hard limits no role can override:** cash-like categories (gift, prepaid, cash, crypto, wire) can never be allowed; the approval limit tops out at $5,000; budgets at $10,000.
-- **Every change is audited** to `logs/policy_changes.csv`: time, user, role, setting, old value, new value.
-- **Changes apply to the next request,** never halfway through one. If `policy.json` can't be read, the gate falls back to a strict built-in policy and **switches changes off** (fail closed).
-
-### Departments, shared items and entitlements
-
-Eight departments share one catalog of 15 items (all made up, in [`catalog.py`](catalog.py)). Each item lists the departments that use it, and **that list is the entitlement**:
-
-| Department | Leader (demo) | Budget | Uses (examples) |
-|:---|:---|---:|:---|
-| Operations | Ruth Okafor | $1,000 | paper, pens, receipt printer rolls, safety vests |
-| Marketing | Kim Alvarez | $500 | paper, pens, trade show banners, 3D printer filament |
-| Legal | Amanda Chen | $1,500 | file folders, case law database seats, compliance training |
-| Security | Tyler Bynum (app owner) | $2,500 | laptops, USB security keys, badge card stock, safety vests |
-| Finance and Accounting | Kevin Walsh | $1,200 | file folders, receipt printer rolls |
-| Research and Development | Brooke Patel | $4,000 | laptops, monitors, lab gloves, 3D printer filament |
-| Information Technology | Rick Sullivan | $8,000 | laptops, monitors, USB security keys, office suite licenses |
-| Human Resources | John Rivera | $1,000 | file folders, badge card stock, compliance training |
-
-- **Need to know.** `check_inventory` shows a department only the items it uses, so the agent never even sees what it can't buy.
-- **Enforced, not just hidden.** `place_order` blocks an item the department isn't entitled to, in case the LLM tries anyway, and the catalog's real category overrides whatever label the LLM sends.
-- **Shared items work for everyone who uses them** (badge card stock for HR and Security; laptops for IT, R&D and Security).
-- **Ten approved vendors, plus unapproved bait.** Quickship Depot and Bargain Tech Outlet are often cheapest but aren't approved, so the Spend Gate blocks them.
-- **Decider's category question is built from the live policy.** Its options match the policy's category names exactly (plus "gift cards", so a cash-like item can still be named). Otherwise an honest "it hardware" order would be denied because Decider could only say "electronics".
-
-`python -m unittest discover tests` runs 22 tests of these rules (no LLM or Decider needed).
-
-
-### The simple CLI
-
-`python start.py --cli` runs the same agent as a plain scrolling terminal (Rich) instead of the full-screen app:
-
-```
- SIGN IN  ────────────────────────────────────
-› Name: Kim Alvarez
-⏺ Signed in  Kim Alvarez · marketing · leader
-
-Kim Alvarez · marketing · $500.00 left
-> we need printer paper by tomorrow
-⏺ check_inventory
-  ⎿  Items used by marketing:
-     printer paper: NEEDS REORDER. On hand 4 (box), reorder at 10, order quantity 5, category: office supplies
-⏺ get_price_quotes
-  ⎿  ...
-     Fastest approved vendor in stock: Paperleaf Co, 1 day
-⏺ place_order
-⠋ Decider 2B checking place_order… 0:00:14 (last one took 28s)
-┌─ Decider 2B · place_order ────────────────────────────────┐
-│ 5 x printer paper · Paperleaf Co · $18.00 each            │
-│                                                           │
-│ grounded         ▰▰▰▰▰▰▰▱▱▱  0.72                         │
-│ injected         ▰▱▱▱▱▱▱▱▱▱  0.08                         │
-│ item looks like  ▰▰▰▰▰▰▰▰▰▱  office supplies (0.86)       │
-│ user goal        ▰▰▰▰▰▰▰▰▰▱  fastest delivery (0.91)      │
-│                                                           │
-│ PROCEED  purchase values are grounded in the conversation │
-└─────────────────────────────────────────────────── 28.9s ─┘
-⏺ Spend Gate  APPROVED  marketing · Paperleaf Co · $90.00
-  ⎿  within policy
-```
-
-Type a request in plain English, a scenario name (`restock`, `rush`, `preferred`, `injection`, `guess`, `bulk`), `report`, `whoami`, `inventory`, `policy`, `help` or `quit`. When the agent asks `(y/n)`, you're the human approver. To run one scenario and exit: `python start.py restock`.
-
-- **The department comes from the session, not the LLM.** You pick it when you start; `place_order` reads it from there. If the department were a tool argument, the agent (or injected text) could charge whichever department still has money.
-- **Every decision is written to `logs/audit_log.csv`**, one row per decision from every control, with the user and a `source` column (`guardrail`, `catalog check` or `spend gate`). Policy changes go to `logs/policy_changes.csv`.
-- **Every step is one line.** Tool calls show as `⏺`, with results under `⎿`; each Decider check gets a framed panel with its scores; a spinner with a timer runs while Decider works. Built with [Rich](https://github.com/Textualize/rich). The guardrail itself doesn't depend on it (see the `display` option in [`decision_pattern/`](decision_pattern/)).
-- **Untrusted text is never read as styling.** Rich treats `[brackets]` as style commands, so LLM output and tool data are always printed as plain `Text`. Otherwise an injected note could restyle or hide parts of the screen from the human approver.
-- **A failed LLM call doesn't end the session.** You get a short fix (for example, missing AWS credentials), and your budgets and orders stay.
-
-Other ways to run it:
-
-| Command | What it does | Needs |
-|:---|:---|:---|
-| `python test_guardrail.py` | Runs the guardrail on fixed cases, prints Decider's numbers | Decider only |
-| `python guard.py` | Runs the spending rules interactively (type `demo` for samples) | Nothing |
-| `$env:LLM_PROVIDER="ollama"; $env:OLLAMA_MODEL="qwen2.5:3b"; python agent.py restock` | Runs the agent on a local model instead of Bedrock | [Ollama](https://ollama.com) with `qwen2.5:3b` (follows tool steps more reliably than `llama3.2:3b`) |
-
-> [!NOTE]
-> **Least privilege for the agent.** The agent's IAM user can call one Bedrock model and nothing else:
-> ```json
-> {
->   "Effect": "Allow",
->   "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
->   "Resource": [
->     "arn:aws:bedrock:*::foundation-model/amazon.nova-lite-v1:0",
->     "arn:aws:bedrock:*:*:inference-profile/us.amazon.nova-lite-v1:0"
->   ]
-> }
-> ```
-
----
-
 ## Spend Gate rules
 
 `check_request()` in [`guard.py`](guard.py) is the final decision point. Every rule that can block runs before anything that can approve, so the only way to reach `APPROVED` is to pass every check.
@@ -709,6 +730,8 @@ The Spend Gate runs on ECS Fargate in a private subnet, loads its policy from S3
 - **Inspiration.** The use case comes from public descriptions of agentic commerce, where AI agents make purchases within limits a person sets. This is an independent learning project. It isn't affiliated with, built for, or endorsed by any company.
 - **Decider 2B is experimental,** and so is this guardrail. The thresholds are tuned on 12 fixed cases and a few live runs, not production traffic.
 - **Fraud data sources:** ACFE *Occupational Fraud 2026: A Report to the Nations* ([summary](https://deandorton.com/articles/acfes-2026-report-to-the-nations-highlights-ongoing-fraud-risks-for-organizations/)) · AFP *2026 Payments Fraud and Control Survey* ([report](https://www.financialprofessionals.org/publications-data-tools/reports/survey-research-economic-data/Details/payments-fraud), [press release](https://www.financialprofessionals.org/about/learn-more/press-releases/Details/over-75-percent-of-us-firms-experienced-payments-fraud-in-2025-while-ai-adoption-for-fraud-mitigation-lags), [BEC figures via Nacha](https://www.nacha.org/news/business-email-compromise-attempts-rose-sharply-2025-report-finds)) · FBI IC3 *2025 Internet Crime Report* ([summary](https://www.mcdonaldhopkins.com/insights/news/the-sobering-truth-of-the-fbis-2025-internet-crime-complaint-center-report))
+
+---
 
 ## License
 

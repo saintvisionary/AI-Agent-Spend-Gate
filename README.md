@@ -23,6 +23,30 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/saintvisionary/AI-Agent-Spend-Gate/archive/refs/heads/main.zip"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-ZIP-2ea44f?style=for-the-badge" alt="Download ZIP"></a>
+  <a href="#windows"><img src="https://img.shields.io/badge/%F0%9F%AA%9F_Windows-Double--click_to_start-0A84FF?style=for-the-badge" alt="Windows: double-click to start"></a>
+  <a href="#macos"><img src="https://img.shields.io/badge/%F0%9F%8D%8E_macOS-Double--click_to_start-1C1C1E?style=for-the-badge" alt="macOS: double-click to start"></a>
+  <a href="#linux"><img src="https://img.shields.io/badge/%F0%9F%90%A7_Linux-.%2Fstart.sh-6E7781?style=for-the-badge" alt="Linux: ./start.sh"></a>
+</p>
+
+<p align="center">
+  <sub>Free to run · no cloud account needed (a local model via Ollama works) · one double-click on Windows and macOS</sub>
+</p>
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><h3>🛡️ Three layers</h3>The LLM proposes. <b>Decider 2B</b> checks if the order is honest. Deterministic rules decide if it's allowed.</td>
+    <td width="33%" valign="top"><h3>💉 Stops injection</h3>A planted <i>"manager pre-approved"</i> note can't buy gift cards, even when the agent believes it.</td>
+    <td width="33%" valign="top"><h3>🏢 Real entitlements</h3>Eight departments. Each sees and buys only the items it uses, within its own budget.</td>
+  </tr>
+  <tr>
+    <td width="33%" valign="top"><h3>🎛️ No-code policy</h3>Department leaders change budgets and limits in the app. The agent never can.</td>
+    <td width="33%" valign="top"><h3>⏹️ Cancel any time</h3>Esc stops a check in under 2 seconds. Nothing is ever half-ordered.</td>
+    <td width="33%" valign="top"><h3>🧾 Full audit trail</h3>Every decision and every policy change, with who, what and why.</td>
+  </tr>
+</table>
+
+<p align="center">
   <a href="#the-problem">The problem</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#the-decision-handed-to-decider-2b">The decision</a> ·
@@ -303,15 +327,62 @@ xychart-beta
 
 ## Quick start
 
-### First run: three steps
+### Runs on
 
-| | Step | Notes |
-|:---:|:---|:---|
-| **1** | Install **[Python 3.10+](https://www.python.org/downloads/)** | Windows: tick **"Add python.exe to PATH"** during the install |
-| **2** | Install **[Ollama](https://ollama.com)** and open it | Free, runs the LLM on your computer. Skip it if you have AWS credentials with Amazon Bedrock access |
-| **3** | Download this repo and **double-click the launcher** | Windows: **`Start Spend Gate.bat`** · Mac: **`start.command`** · Linux: `./start.sh` |
+| | 🪟 **Windows 10 / 11** | 🍎 **macOS** | 🐧 **Linux** |
+|:---|:---|:---|:---|
+| **Start it** | Double-click **`Start Spend Gate.bat`** | Double-click **`start.command`** | `./start.sh` |
+| **Status** | ✅ Tested | 🧪 Launcher included, not yet tested | 🧪 Launcher included, not yet tested |
+| **You need** | Python 3.10+, Ollama | Python 3.10+, Ollama | Python 3.10+, Ollama |
+| **Memory** | 16 GB (Decider 2B uses about 6 GB) | 16 GB (Decider 2B uses about 6 GB) | 16 GB (Decider 2B uses about 6 GB) |
 
-The first start installs packages and downloads two models (Decider 2B and `qwen2.5:3b`), so it takes a while once; after that it opens in under a minute. Decider 2B needs about **6 GB of free memory**, so close heavy apps first.
+Everything else (packages, models, Decider 2B) is set up by the launcher on first start. Ollama runs the LLM on your own computer for free; with AWS credentials for Amazon Bedrock, you don't need it.
+
+<a name="windows"></a>
+<details open>
+<summary><b>🪟 Windows: set up in 3 steps</b></summary>
+
+<br/>
+
+1. **Install [Python](https://www.python.org/downloads/).** On the first installer screen, tick **"Add python.exe to PATH"**.
+2. **Install [Ollama](https://ollama.com)** and open it once (it runs in the background, next to the clock).
+3. **[Download the ZIP](https://github.com/saintvisionary/AI-Agent-Spend-Gate/archive/refs/heads/main.zip)**, unzip it, and **double-click `Start Spend Gate.bat`**.
+
+The first start installs packages and downloads two models, so it takes several minutes once. After that it opens in under a minute.
+
+- **"Windows protected your PC"?** Click **More info → Run anyway**. The `.bat` file is 30 readable lines; open it in Notepad first if you'd like to check.
+- **The window flashes and closes?** Open the folder in a terminal and run `python start.py --check`.
+- **No `Set-ExecutionPolicy` needed.** A `.bat` file isn't blocked by PowerShell's script policy.
+
+</details>
+
+<a name="macos"></a>
+<details>
+<summary><b>🍎 macOS: set up in 3 steps</b> (not yet tested)</summary>
+
+<br/>
+
+1. **Install [Python](https://www.python.org/downloads/)** from python.org. (The `python3` that comes with macOS may first ask to install Apple's developer tools; the python.org installer avoids that.)
+2. **Install [Ollama](https://ollama.com)** and open it once.
+3. **[Download the ZIP](https://github.com/saintvisionary/AI-Agent-Spend-Gate/archive/refs/heads/main.zip)**, unzip it, and **double-click `start.command`**.
+
+- **"cannot be opened because it is from an unidentified developer"?** The first time only: **right-click `start.command` → Open → Open**. Or allow it in **System Settings → Privacy & Security**.
+- **"permission denied"?** In Terminal, in the project folder: `chmod +x start.command`
+- **Apple silicon and Intel** both work. Decider 2B runs on the CPU either way.
+
+</details>
+
+<a name="linux"></a>
+<details>
+<summary><b>🐧 Linux: set up in 3 steps</b> (not yet tested)</summary>
+
+<br/>
+
+1. **Install Python 3.10+** with venv support, for example `sudo apt install python3 python3-venv`.
+2. **Install [Ollama](https://ollama.com/download/linux)**.
+3. Clone the repo and run `./start.sh`.
+
+</details>
 
 **Not sure you're ready?** `python start.py --check` reports what's installed and what's missing, and changes nothing:
 
@@ -326,7 +397,7 @@ The first start installs packages and downloads two models (Decider 2B and `qwen
 Ready to start.
 ```
 
-**Prefer a terminal?** It's the same thing:
+**Prefer a terminal?** On any system, it's the same thing:
 ```powershell
 git clone https://github.com/saintvisionary/AI-Agent-Spend-Gate.git
 cd AI-Agent-Spend-Gate

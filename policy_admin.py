@@ -13,12 +13,12 @@
 #   owner    can change everything, including vendors, categories and the
 #            approval limit
 # Any name that isn't in the roster signs in as a member.
-import csv
 import math
 import os
 import re
 import time
 
+import audit_chain
 import catalog
 import policy
 
@@ -257,15 +257,11 @@ def apply_change(session, setting, target, text):
 
 
 # Writes one row per change. Who changed what, from what, to what, and when.
+# Hash-chained like the purchase log (see audit_chain.py).
 def audit(session, setting, target, old, new):
-    os.makedirs("logs", exist_ok=True)
-    new_file = not os.path.exists(CHANGE_LOG)
+    values = [time.strftime("%Y-%m-%d %H:%M:%S"), session.get("user"), session.get("role"),
+              setting, target or "", old, new]
     try:
-        with open(CHANGE_LOG, "a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            if new_file:
-                writer.writerow(CHANGE_COLUMNS)
-            writer.writerow([time.strftime("%Y-%m-%d %H:%M:%S"), session.get("user"), session.get("role"),
-                             setting, target or "", old, new])
+        audit_chain.append_row(CHANGE_LOG, CHANGE_COLUMNS, values)
     except OSError as error:
         print(f"WARNING: could not write the policy change log: {error}")

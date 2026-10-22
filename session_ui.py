@@ -72,6 +72,7 @@ COMMANDS = [
     ("whoami", "who is signed in, and the budget left"),
     ("inventory", "what's on the shelf"),
     ("policy", "the purchasing rules (leaders can change them in the app: F5)"),
+    ("audit", "audit pack, log integrity check, policy as Terraform (in the app: F6)"),
     ("cancel", "stop the running request (or press Esc, or click Cancel)"),
     ("help", "show this menu"),
     ("quit", "exit (Esc also offers to quit when nothing is running)"),
@@ -285,6 +286,44 @@ def policy_panel(session=None):
         table.add_row(Text(f"Reorder: {item}", style="dim"),
                       Text(f"below {settings['reorder_at']}, order {settings['order_qty']}"))
     return Panel(table, title=f"[{TITLE}] POLICY [/]", title_align="left", border_style=ACCENT, box=box.ROUNDED, expand=False)
+
+
+# What a new audit pack contains, at a glance.
+def audit_summary_panel(summary):
+    table = Table.grid(padding=(0, 2))
+    table.add_row(Text("Scope", style="dim"), Text(summary["scope"]))
+    table.add_row(Text("Period", style="dim"), Text(f"{summary['period'][0]}  to  {summary['period'][1]}"))
+    table.add_row(Text("Decisions", style="dim"), Text(str(summary["decisions"])))
+    table.add_row(Text("Exceptions", style="dim"), Text(f"{len(summary['exceptions'])} (denied, blocked, human-decided or cancelled)"))
+    table.add_row(Text("Policy changes", style="dim"), Text(str(len(summary["policy_changes"]))))
+    for name, ok, rows, message, head in summary["verification"]:
+        mark = Text("✓ ", style="green") if ok else Text("✗ ", style="bold red")
+        table.add_row(Text(f"Log: {name}", style="dim"), mark + Text(message))
+    table.add_row(Text("Saved to", style="dim"), Text(summary["folder"], style="bold"))
+    return Panel(table, title=f"[{TITLE}] AUDIT PACK [/]", title_align="left", border_style="green", box=box.ROUNDED, expand=False)
+
+
+# The hash-chain check for both logs.
+def verify_panel(results):
+    table = Table.grid(padding=(0, 2))
+    all_ok = True
+    for name, ok, rows, message, head in results:
+        all_ok = all_ok and ok
+        mark = Text("✓ ", style="bold green") if ok else Text("✗ ", style="bold red")
+        table.add_row(mark + Text(name, style="bold"), Text(message))
+        table.add_row(Text(""), Text(f"latest hash {head[:16]}…", style="dim"))
+    color = "green" if all_ok else "red"
+    title = "LOGS VERIFIED" if all_ok else "LOG TAMPERING DETECTED"
+    return Panel(table, title=f"[{TITLE}] {title} [/]", title_align="left", border_style=color, box=box.ROUNDED, expand=False)
+
+
+def terraform_panel(folder):
+    table = Table.grid(padding=(0, 2))
+    table.add_row(Text("terraform.tfvars.json", style="bold"), Text("the policy values right now", style="dim"))
+    table.add_row(Text("variables.tf", style="bold"), Text("typed, with the app's hard limits as validation", style="dim"))
+    table.add_row(Text("main.tf", style="bold"), Text("versioned private S3 bucket + read-only IAM policy", style="dim"))
+    table.add_row(Text("Saved to", style="dim"), Text(folder, style="bold"))
+    return Panel(table, title=f"[{TITLE}] POLICY AS TERRAFORM [/]", title_align="left", border_style=ACCENT, box=box.ROUNDED, expand=False)
 
 
 def inventory_panel(text):

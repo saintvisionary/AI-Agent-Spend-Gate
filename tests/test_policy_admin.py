@@ -116,7 +116,7 @@ class PolicyAdminTests(unittest.TestCase):
         policy_admin.apply_change(OPS_LEADER, "budget", "operations", "1200")
         with open(policy_admin.CHANGE_LOG, encoding="utf-8") as f:
             rows = f.read().splitlines()
-        self.assertEqual(rows[0], ",".join(policy_admin.CHANGE_COLUMNS))
+        self.assertEqual(rows[0], ",".join(policy_admin.CHANGE_COLUMNS + ["row_hash"]))
         self.assertIn("Ruth Okafor,leader,budget,operations", rows[1])
 
 

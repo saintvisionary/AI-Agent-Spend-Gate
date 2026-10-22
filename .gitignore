@@ -10,3 +10,6 @@ logs/
 
 # Private notes
 notes/
+
+# Audit packs and Terraform exports (they contain names and decisions)
+exports/

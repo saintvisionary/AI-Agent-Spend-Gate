@@ -4,6 +4,9 @@
 #     python start.py              the full-screen app (app.py)
 #     python start.py --cli        the simple terminal version (agent.py)
 #     python start.py restock      one scenario, then exit
+#     python start.py --check      report what's ready and what's missing (changes nothing)
+#
+# Or double-click "Start Spend Gate.bat" (Windows) / start.command (Mac).
 #
 # It works with any Python 3.10+ and needs nothing installed first. It does
 # not need the virtual environment to be activated, so PowerShell's script
@@ -204,7 +207,88 @@ def run_agent(llm):
     return subprocess.run(command, env=env, cwd=PROJECT).returncode
 
 
+# ---------------------------------------------------------------
+# --check: REPORT WHAT'S READY, CHANGE NOTHING
+# ---------------------------------------------------------------
+
+# Free memory in GB, or None if this computer won't say.
+def free_ram_gb():
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            class MemoryStatus(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+
+            status = MemoryStatus()
+            status.dwLength = ctypes.sizeof(MemoryStatus)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status))
+            return status.ullAvailPhys / 1024 ** 3
+        return os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") / 1024 ** 3
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def ollama_status():
+    try:
+        with urllib.request.urlopen(f"{OLLAMA_URL}/api/tags", timeout=3) as response:
+            names = [model.get("name", "") for model in json.load(response).get("models", [])]
+    except OSError:
+        return False, "not running (install from https://ollama.com, then open it)"
+    if OLLAMA_MODEL in names:
+        return True, f"running, {OLLAMA_MODEL} downloaded"
+    return True, f"running; {OLLAMA_MODEL} will be downloaded on first start (about 2 GB)"
+
+
+# Prints one line per item: OK, or what's missing and how to fix it.
+def check_setup():
+    ready = True
+    print("AI Agent Spend Gate: setup check (nothing is changed)\n")
+
+    version = sys.version.split()[0]
+    python_ok = sys.version_info >= (3, 10)
+    print(f"  [{'OK' if python_ok else '!!'}] Python {version}" + ("" if python_ok else " (3.10 or newer needed)"))
+    ready = ready and python_ok
+
+    installed = os.path.exists(INSTALLED_MARKER)
+    if installed:
+        with open(INSTALLED_MARKER) as f:
+            installed = f.read() == requirements_hash()
+    print(f"  [{'OK' if installed else '..'}] Packages" + (" installed" if installed
+          else ": not installed yet (the first start installs them; several minutes)"))
+
+    aws = False
+    if os.path.exists(venv_file("python")):
+        check = "import boto3; print(boto3.Session().get_credentials() is not None)"
+        found = subprocess.run([venv_file("python"), "-c", check], capture_output=True, text=True)
+        aws = found.stdout.strip() == "True"
+    ollama_ok, ollama_text = ollama_status()
+    print(f"  [{'OK' if aws else '..'}] AWS credentials for Bedrock: " + ("found" if aws else "not found (fine if you use Ollama)"))
+    print(f"  [{'OK' if ollama_ok else '..'}] Ollama: {ollama_text}")
+    if not aws and not ollama_ok:
+        print("  [!!] No LLM available: install Ollama (free) or set up AWS credentials")
+        ready = False
+
+    decider = port_open(DECIDER_PORT)
+    print(f"  [OK] Decider 2B: " + ("running" if decider else "not running (start.py starts it for you)"))
+
+    ram = free_ram_gb()
+    if ram is not None:
+        enough = decider or ram >= 6
+        print(f"  [{'OK' if enough else '!!'}] Free memory: {ram:.1f} GB" +
+              ("" if enough else " (Decider 2B needs about 6 GB; close other apps first)"))
+
+    print("\nReady to start." if ready else "\nNot ready yet: fix the [!!] items above.")
+    return ready
+
+
 def main():
+    if "--check" in sys.argv:
+        sys.exit(0 if check_setup() else 1)
     check_python()
     install_packages()
     llm = pick_llm()

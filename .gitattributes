@@ -1,0 +1,5 @@
+# Line endings for the launchers. Windows .bat files need CRLF; Mac and
+# Linux shell scripts need LF, or they fail with "bad interpreter" errors.
+*.bat       text eol=crlf
+*.sh        text eol=lf
+*.command   text eol=lf

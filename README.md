@@ -56,10 +56,9 @@
   <a href="#reference-architecture-on-aws">AWS architecture</a>
 </p>
 
-<!--
-Demo video goes here once it's recorded:
-[![Demo video](assets/video-thumbnail.png)](https://youtu.be/...)
--->
+https://github.com/user-attachments/assets/169bc372-648a-4dbb-89ce-05e846f46eac
+
+<p align="center"><sub>Demo mode: scripted agent, Decider 2B results replayed from real test runs. Rules, approvals, policy and audit are live.</sub></p>
 
 ### In one minute
 

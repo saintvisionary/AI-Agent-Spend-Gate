@@ -251,6 +251,8 @@ def place_order(vendor: str, item: str, quantity: int, unit_price: float, catego
             decision, reason = "APPROVED", "approved by a human"
         else:
             decision, reason = "BLOCKED", "rejected by the human approver"
+        # Show the human's answer too, so the person sees what their click did.
+        UI.show_spend_gate(decision, department, vendor, amount, reason)
     ledger.audit(user, department, "spend gate", vendor, item, quantity, category, amount, decision, reason)
 
     if decision == "APPROVED":

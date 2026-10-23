@@ -13,3 +13,6 @@ notes/
 
 # Audit packs and Terraform exports (they contain names and decisions)
 exports/
+
+# macOS folder metadata
+.DS_Store

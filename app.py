@@ -43,7 +43,7 @@ import session_ui as ui
 from decision_pattern.decider_client import ask_decider, yes_no_question
 from decision_pattern.spend_guardrail import SpendGuardrail
 
-COMMAND_WORDS = ["report", "whoami", "inventory", "policy", "audit", "cancel", "stop", "help", "clear", "quit"] + list(agent.SCENARIOS)
+COMMAND_WORDS = ["report", "whoami", "inventory", "policy", "audit", "logout", "cancel", "stop", "help", "clear", "quit"] + list(agent.SCENARIOS)
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
@@ -543,6 +543,7 @@ class SpendGateApp(App):
         self.guardrail = None
         self.busy = False
         self.cancelling = False
+        self.warmed = False
         self.last_entry = None
         self.activity_label = ""
         self.activity_started = 0.0
@@ -564,6 +565,8 @@ class SpendGateApp(App):
                     yield Button("🎛️ Policy", id="action-policy", compact=True)
                 with Horizontal(classes="sidebar-actions"):
                     yield Button("🧾 Audit & Export", id="action-audit", compact=True, variant="primary")
+                with Horizontal(classes="sidebar-actions"):
+                    yield Button("👤 Switch user", id="action-logout", compact=True)
         with Horizontal(id="activity-row"):
             yield Static(id="activity")
             yield Button("■ Cancel (Esc)", id="cancel", variant="error", compact=True)
@@ -586,7 +589,21 @@ class SpendGateApp(App):
         self.write_log(ui.help_panel(list(agent.SCENARIOS)))
         self.refresh_sidebar()
         self.query_one("#prompt", Input).focus()
-        self.start_thread(self.warm_up)
+        # Warm the models once per app run, not on every sign-in.
+        if not self.warmed:
+            self.warmed = True
+            self.start_thread(self.warm_up)
+
+    # Switch user: back to the sign-in screen. Not while a request runs,
+    # because the running request belongs to the person who started it.
+    # Budgets and orders stay: they belong to the departments, not the person.
+    def switch_user(self):
+        if self.busy:
+            self.write_log(ui.result_text("A request is still running. Cancel it (Esc) before switching user.", style="yellow"))
+            return
+        self.write_log(ui.step_text("Signed out", Text(agent.SESSION.get("user", "")), dot="white"))
+        agent.SESSION.update({"user": "", "department": "operations", "role": "member"})
+        self.push_screen(SignInScreen(), self.signed_in)
 
     # ---- the log, the sidebar and the activity line ----
 
@@ -683,6 +700,8 @@ class SpendGateApp(App):
             self.write_log(ui.inventory_panel(agent.inventory_text()))
         elif command in ("cancel", "stop"):
             self.action_cancel_request()
+        elif command == "logout":
+            self.switch_user()
         elif command == "audit":
             self.push_screen(AuditScreen(agent.SESSION))
         elif command == "policy":
@@ -715,7 +734,7 @@ class SpendGateApp(App):
         self.write_log(ui.result_text("Cancelling the request…", style="yellow"))
 
     def on_button_pressed(self, event: Button.Pressed):
-        actions = {"cancel": "cancel", "action-report": "report", "action-policy": "policy", "action-audit": "audit"}
+        actions = {"cancel": "cancel", "action-report": "report", "action-policy": "policy", "action-audit": "audit", "action-logout": "logout"}
         if event.button.id in actions:
             self.action_command(actions[event.button.id])
 

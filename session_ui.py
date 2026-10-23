@@ -74,6 +74,7 @@ COMMANDS = [
     ("policy", "the purchasing rules (leaders can change them in the app: F5)"),
     ("audit", "audit pack, log integrity check, policy as Terraform (in the app: F6)"),
     ("cancel", "stop the running request (or press Esc, or click Cancel)"),
+    ("logout", "switch user (or click Switch user)"),
     ("help", "show this menu"),
     ("quit", "exit (Esc also offers to quit when nothing is running)"),
 ]

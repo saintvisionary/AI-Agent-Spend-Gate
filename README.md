@@ -244,6 +244,7 @@ A full-screen terminal app built with [Textual](https://github.com/Textualize/te
 | F6 | `audit` | **Audit & Export:** audit pack, log integrity check, policy as Terraform |
 | Esc | `cancel` / `stop` | Stops the running request at once. Nothing more gets ordered. When nothing is running, Esc offers to quit |
 | Ctrl+L | `clear` | Clears the log |
+| | `logout` | Switch user (or click **👤 Switch user** in the sidebar) |
 | Ctrl+Q | `quit` | Quits (asks first if a request is running) |
 
 While a request runs, a **■ Cancel** button appears next to the spinner. In VS Code's terminal, some F-keys open VS Code menus instead; the typed commands always work.

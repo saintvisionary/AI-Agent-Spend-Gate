@@ -30,12 +30,12 @@ class AuditTests(unittest.TestCase):
         ledger.AUDIT_LOG = os.path.join(self.folder, "audit_log.csv")
         policy_admin.CHANGE_LOG = os.path.join(self.folder, "policy_changes.csv")
         audit_export.EXPORTS = os.path.join(self.folder, "exports")
-        ledger.audit("Kim Alvarez", "marketing", "spend gate", "Paperleaf Co", "printer paper", 5,
-                     "office supplies", 90.0, "APPROVED", "within policy")
-        ledger.audit("Rick Sullivan", "information technology", "guardrail", "Cobalt Systems", "laptops", 2,
+        ledger.audit("Kim Alvarez", "marketing", "spend gate", "Staples", "printer paper", 8,
+                     "office supplies", 439.92, "APPROVED", "within policy")
+        ledger.audit("Rick Sullivan", "information technology", "guardrail", "Dell", "laptops", 2,
                      "office supplies", "", "DENY", "item looks like 'it hardware' but was labeled 'office supplies'")
-        ledger.audit("Kim Alvarez", "marketing", "spend gate", "Quickship Depot", "printer paper", 5,
-                     "office supplies", 77.5, "BLOCKED", "vendor 'Quickship Depot' is not approved")
+        ledger.audit("Kim Alvarez", "marketing", "spend gate", "Amazon Business", "printer paper", 8,
+                     "office supplies", 383.92, "BLOCKED", "vendor 'Amazon Business' is not approved")
 
     def tearDown(self):
         ledger.AUDIT_LOG, policy_admin.CHANGE_LOG, audit_export.EXPORTS = self.real

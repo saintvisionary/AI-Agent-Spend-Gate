@@ -24,7 +24,7 @@ import policy
 
 # HARD LIMITS. These are in code, not in policy.json, on purpose: no role
 # can change them from the app. Some controls shouldn't be configurable.
-MAX_BUDGET = 10000          # per department
+MAX_BUDGET = 250000         # per department, per month
 MAX_APPROVAL_OVER = 5000    # the human-approval limit can't go above this
 MAX_REORDER = 1000          # reorder points and order quantities
 # Cash-like purchases can never be allowed: they're the classic fraud cash-out.

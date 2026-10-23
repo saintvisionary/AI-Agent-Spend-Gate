@@ -75,8 +75,8 @@ class PolicyAdminTests(unittest.TestCase):
         self.assertFalse(policy_admin.apply_change(OPS_LEADER, "add_vendor", None, "Shady Deals LLC")[0])
 
     def test_owner_can_change_org_wide_settings(self):
-        self.assertTrue(policy_admin.apply_change(OWNER, "add_vendor", None, "Quickship Depot")[0])
-        self.assertIn("Quickship Depot", guard.APPROVED_VENDORS)
+        self.assertTrue(policy_admin.apply_change(OWNER, "add_vendor", None, "Amazon Business")[0])
+        self.assertIn("Amazon Business", guard.APPROVED_VENDORS)
 
     # ---- hard limits and validation ----
 
@@ -108,9 +108,9 @@ class PolicyAdminTests(unittest.TestCase):
     # ---- the rules use the change immediately ----
 
     def test_rules_use_a_new_approval_limit_on_the_next_decision(self):
-        self.assertEqual(guard.check_request("Paperleaf Co", "office supplies", 450)[0], "APPROVED")
+        self.assertEqual(guard.check_request("Staples", "office supplies", 450)[0], "APPROVED")
         policy_admin.apply_change(OWNER, "approval_over", None, "400")
-        self.assertEqual(guard.check_request("Paperleaf Co", "office supplies", 450)[0], "NEEDS APPROVAL")
+        self.assertEqual(guard.check_request("Staples", "office supplies", 450)[0], "NEEDS APPROVAL")
 
     def test_every_change_is_audited(self):
         policy_admin.apply_change(OPS_LEADER, "budget", "operations", "1200")

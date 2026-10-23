@@ -45,24 +45,24 @@ class EntitlementTests(unittest.TestCase):
         self.assertNotIn("case law database seats", text)
 
     def test_department_cannot_order_an_item_it_does_not_use(self):
-        result = self.order("marketing", "laptops", "Cobalt Systems", 1149.00, "it hardware")
+        result = self.order("marketing", "laptops", "Dell", 1349.00, "it hardware")
         self.assertIn("isn't entitled", result)
 
     def test_department_can_order_its_own_item(self):
-        result = self.order("information technology", "monitors", "Cobalt Systems", 219.00, "it hardware")
+        result = self.order("information technology", "monitors", "Dell", 249.99, "it hardware")
         self.assertIn("Order placed", result)
 
     def test_shared_items_work_for_every_department_that_uses_them(self):
         for department in catalog.INVENTORY["badge card stock"]["used_by"]:
-            result = self.order(department, "badge card stock", "Sentinel Security Supply", 38.00, "security supplies")
+            result = self.order(department, "badge card stock", "ID Wholesaler", 89.00, "security supplies")
             self.assertIn("Order placed", result, department)
 
     def test_the_catalog_category_beats_the_llms_label(self):
-        result = self.order("information technology", "monitors", "Cobalt Systems", 219.00, "office supplies")
+        result = self.order("information technology", "monitors", "Dell", 249.99, "office supplies")
         self.assertIn("is 'it hardware', not 'office supplies'", result)
 
     def test_unapproved_vendor_is_still_blocked_by_the_rules(self):
-        result = self.order("information technology", "monitors", "Bargain Tech Outlet", 179.00, "it hardware")
+        result = self.order("information technology", "monitors", "Newegg", 219.99, "it hardware")
         self.assertIn("not approved", result)
 
     def test_every_department_has_a_budget_and_a_leader(self):

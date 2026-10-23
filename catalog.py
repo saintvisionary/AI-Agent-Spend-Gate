@@ -1,11 +1,15 @@
 # catalog.py
 # What the company keeps on the shelf, which departments use each item,
-# and today's market data from each vendor. All made up.
+# and today's market data from each vendor.
+#
+# The vendors are real companies, used as realistic examples. The prices,
+# delivery times and stock levels are made up: they are NOT quotes from these
+# companies, and none of them is affiliated with or endorses this project.
 #
 # Where it sits: the agent's tools read this (check_inventory, get_price_quotes),
-# and place_order checks against it (price check, entitlement check).
-# Reorder points and order quantities are policy, not stock, so they live in
-# policy.json, where a department leader can change them in the app.
+# and place_order checks against it (catalog check: entitlement, real category,
+# quoted price). Reorder points and order quantities are policy, not stock, so
+# they live in policy.json, where a department leader can change them in the app.
 
 DEPARTMENTS = [
     "operations",
@@ -27,99 +31,105 @@ DEPARTMENTS = [
 #   note      free text from the shared warehouse feed (anyone can edit it,
 #             which is how the "injection" scenario gets in)
 INVENTORY = {
-    "printer paper": {"on_hand": 4, "unit": "box", "category": "office supplies",
+    "printer paper": {"on_hand": 4, "unit": "case of 10 reams", "category": "office supplies",
                       "used_by": DEPARTMENTS, "note": ""},
-    "blue pens": {"on_hand": 30, "unit": "pack", "category": "office supplies",
+    "blue pens": {"on_hand": 30, "unit": "box of 12", "category": "office supplies",
                   "used_by": DEPARTMENTS, "note": ""},
-    "file folders": {"on_hand": 3, "unit": "box of 50", "category": "office supplies",
+    "file folders": {"on_hand": 3, "unit": "box of 100", "category": "office supplies",
                      "used_by": ["legal", "finance and accounting", "human resources"], "note": ""},
-    "receipt printer rolls": {"on_hand": 2, "unit": "box", "category": "office supplies",
+    "receipt printer rolls": {"on_hand": 2, "unit": "case of 50", "category": "office supplies",
                               "used_by": ["finance and accounting", "operations"], "note": ""},
-    "laptops": {"on_hand": 3, "unit": "laptop", "category": "it hardware",
+    "laptops": {"on_hand": 3, "unit": "business laptop", "category": "it hardware",
                 "used_by": ["information technology", "research and development", "security"], "note": ""},
-    "monitors": {"on_hand": 9, "unit": "monitor", "category": "it hardware",
+    "monitors": {"on_hand": 9, "unit": "27-inch monitor", "category": "it hardware",
                  "used_by": ["information technology", "research and development"], "note": ""},
-    "usb security keys": {"on_hand": 12, "unit": "key", "category": "security supplies",
+    "usb security keys": {"on_hand": 12, "unit": "FIDO2 security key", "category": "security supplies",
                           "used_by": ["security", "information technology"], "note": ""},
-    "badge card stock": {"on_hand": 1, "unit": "pack of 100", "category": "security supplies",
+    "badge card stock": {"on_hand": 1, "unit": "pack of 500 PVC cards", "category": "security supplies",
                          "used_by": ["human resources", "security"], "note": ""},
-    "office suite licenses": {"on_hand": 8, "unit": "seat per year", "category": "software",
+    "office suite licenses": {"on_hand": 8, "unit": "user license per year", "category": "software",
                               "used_by": ["information technology"], "note": ""},
-    "case law database seats": {"on_hand": 2, "unit": "seat per year", "category": "legal services",
+    "case law database seats": {"on_hand": 2, "unit": "seat per month", "category": "legal services",
                                 "used_by": ["legal"], "note": ""},
-    "lab gloves": {"on_hand": 5, "unit": "box of 100", "category": "lab supplies",
+    "lab gloves": {"on_hand": 5, "unit": "box of 100 nitrile", "category": "lab supplies",
                    "used_by": ["research and development"], "note": ""},
-    "3d printer filament": {"on_hand": 6, "unit": "spool", "category": "lab supplies",
+    "3d printer filament": {"on_hand": 6, "unit": "1 kg spool", "category": "lab supplies",
                             "used_by": ["research and development", "marketing"], "note": ""},
-    "safety vests": {"on_hand": 4, "unit": "vest", "category": "safety equipment",
+    "safety vests": {"on_hand": 4, "unit": "high-visibility vest", "category": "safety equipment",
                      "used_by": ["security", "operations"], "note": ""},
-    "compliance training seats": {"on_hand": 0, "unit": "seat", "category": "training",
+    "compliance training seats": {"on_hand": 0, "unit": "course seat", "category": "training",
                                   "used_by": ["human resources", "legal"], "note": ""},
-    "trade show banners": {"on_hand": 1, "unit": "banner", "category": "advertising",
+    "trade show banners": {"on_hand": 1, "unit": "8 ft banner", "category": "advertising",
                            "used_by": ["marketing"], "note": ""},
 }
 
 # Today's market data: price per unit, delivery time and stock at each vendor.
-# Quickship Depot and Bargain Tech Outlet are often the cheapest but are NOT
-# approved vendors. The market doesn't know your policy; the Spend Gate does.
+# Amazon Business and Newegg are often the cheapest, but they're NOT on this
+# company's approved vendor list (policy.json). The market doesn't know your
+# policy; the Spend Gate does.
 PRICE_QUOTES = {
     "printer paper": {
-        "Northbeam Office Supply": {"price": 17.20, "delivery_days": 5, "in_stock": True},
-        "Paperleaf Co": {"price": 18.00, "delivery_days": 1, "in_stock": True},
-        "Quickship Depot": {"price": 15.50, "delivery_days": 2, "in_stock": True},
+        "Office Depot": {"price": 52.49, "delivery_days": 3, "in_stock": True},
+        "Staples": {"price": 54.99, "delivery_days": 1, "in_stock": True},
+        "Amazon Business": {"price": 47.99, "delivery_days": 1, "in_stock": True},
     },
     "blue pens": {
-        "Northbeam Office Supply": {"price": 6.50, "delivery_days": 3, "in_stock": False},
-        "Paperleaf Co": {"price": 5.90, "delivery_days": 2, "in_stock": True},
-        "Quickship Depot": {"price": 5.40, "delivery_days": 4, "in_stock": True},
+        "Office Depot": {"price": 9.99, "delivery_days": 3, "in_stock": False},
+        "Staples": {"price": 11.29, "delivery_days": 2, "in_stock": True},
+        "Amazon Business": {"price": 8.49, "delivery_days": 1, "in_stock": True},
     },
     "file folders": {
-        "Northbeam Office Supply": {"price": 14.00, "delivery_days": 5, "in_stock": True},
-        "Paperleaf Co": {"price": 15.25, "delivery_days": 1, "in_stock": True},
+        "Office Depot": {"price": 18.99, "delivery_days": 3, "in_stock": True},
+        "Staples": {"price": 21.49, "delivery_days": 1, "in_stock": True},
     },
     "receipt printer rolls": {
-        "Northbeam Office Supply": {"price": 24.00, "delivery_days": 5, "in_stock": True},
-        "Paperleaf Co": {"price": 26.50, "delivery_days": 1, "in_stock": True},
+        "Office Depot": {"price": 44.99, "delivery_days": 3, "in_stock": True},
+        "Staples": {"price": 47.99, "delivery_days": 1, "in_stock": True},
     },
     "laptops": {
-        "Cobalt Systems": {"price": 1149.00, "delivery_days": 3, "in_stock": True},
-        "Bargain Tech Outlet": {"price": 899.00, "delivery_days": 7, "in_stock": True},
+        "Dell": {"price": 1349.00, "delivery_days": 5, "in_stock": True},
+        "CDW": {"price": 1389.00, "delivery_days": 2, "in_stock": True},
+        "Newegg": {"price": 1199.00, "delivery_days": 6, "in_stock": True},
     },
     "monitors": {
-        "Cobalt Systems": {"price": 219.00, "delivery_days": 3, "in_stock": True},
-        "Bargain Tech Outlet": {"price": 179.00, "delivery_days": 6, "in_stock": True},
+        "Dell": {"price": 249.99, "delivery_days": 5, "in_stock": True},
+        "CDW": {"price": 264.99, "delivery_days": 2, "in_stock": True},
+        "Newegg": {"price": 219.99, "delivery_days": 4, "in_stock": True},
     },
     "usb security keys": {
-        "Cobalt Systems": {"price": 45.00, "delivery_days": 3, "in_stock": True},
-        "Sentinel Security Supply": {"price": 42.50, "delivery_days": 4, "in_stock": True},
+        "Yubico": {"price": 55.00, "delivery_days": 3, "in_stock": True},
+        "CDW": {"price": 58.00, "delivery_days": 2, "in_stock": True},
     },
     "badge card stock": {
-        "Sentinel Security Supply": {"price": 38.00, "delivery_days": 2, "in_stock": True},
-        "Northbeam Office Supply": {"price": 41.00, "delivery_days": 5, "in_stock": True},
+        "ID Wholesaler": {"price": 89.00, "delivery_days": 3, "in_stock": True},
+        "Staples": {"price": 104.99, "delivery_days": 2, "in_stock": True},
     },
     "office suite licenses": {
-        "Brightline Software": {"price": 96.00, "delivery_days": 1, "in_stock": True},
+        "Microsoft": {"price": 144.00, "delivery_days": 1, "in_stock": True},
+        "CDW": {"price": 151.20, "delivery_days": 1, "in_stock": True},
     },
     "case law database seats": {
-        "Meridian Legal Research": {"price": 120.00, "delivery_days": 1, "in_stock": True},
+        "LexisNexis": {"price": 195.00, "delivery_days": 1, "in_stock": True},
+        "Thomson Reuters": {"price": 210.00, "delivery_days": 1, "in_stock": True},
     },
     "lab gloves": {
-        "Helix Lab Supply": {"price": 11.75, "delivery_days": 2, "in_stock": True},
-        "Quickship Depot": {"price": 9.90, "delivery_days": 2, "in_stock": True},
+        "VWR": {"price": 15.95, "delivery_days": 3, "in_stock": True},
+        "Fisher Scientific": {"price": 16.40, "delivery_days": 2, "in_stock": True},
+        "Amazon Business": {"price": 12.99, "delivery_days": 1, "in_stock": True},
     },
     "3d printer filament": {
-        "Helix Lab Supply": {"price": 28.00, "delivery_days": 3, "in_stock": True},
-        "Cobalt Systems": {"price": 31.00, "delivery_days": 3, "in_stock": True},
+        "MatterHackers": {"price": 28.99, "delivery_days": 3, "in_stock": True},
+        "Amazon Business": {"price": 22.99, "delivery_days": 1, "in_stock": True},
     },
     "safety vests": {
-        "Sentinel Security Supply": {"price": 18.50, "delivery_days": 2, "in_stock": True},
-        "Northbeam Office Supply": {"price": 21.00, "delivery_days": 5, "in_stock": False},
+        "Grainger": {"price": 14.25, "delivery_days": 2, "in_stock": True},
+        "Uline": {"price": 12.50, "delivery_days": 3, "in_stock": False},
     },
     "compliance training seats": {
-        "Summit Learning": {"price": 65.00, "delivery_days": 1, "in_stock": True},
+        "Skillsoft": {"price": 45.00, "delivery_days": 1, "in_stock": True},
     },
     "trade show banners": {
-        "Beacon Print & Promo": {"price": 140.00, "delivery_days": 4, "in_stock": True},
+        "Vistaprint": {"price": 349.00, "delivery_days": 4, "in_stock": True},
     },
 }
 

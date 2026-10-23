@@ -160,7 +160,7 @@ def error_text(error):
     return step_text("The request failed", Text(f"{type(error).__name__}: {error}"), dot="red")
 
 
-# "5 x printer paper · Northbeam Office Supply · $17.20 each" from tool arguments.
+# "8 x printer paper · Office Depot · $52.49 each" from tool arguments.
 def describe_order(arguments):
     parts = [f"{arguments.get('quantity', '?')} x {arguments.get('item', '?')}", str(arguments.get("vendor", "?"))]
     if isinstance(arguments.get("unit_price"), (int, float)):

@@ -11,31 +11,38 @@
     "training"
   ],
   "approved_vendors": [
-    "Northbeam Office Supply",
-    "Paperleaf Co",
-    "Cobalt Systems",
-    "Sentinel Security Supply",
-    "Brightline Software",
-    "Meridian Legal Research",
-    "Helix Lab Supply",
-    "Summit Learning",
-    "Beacon Print & Promo"
+    "Office Depot",
+    "Staples",
+    "Dell",
+    "CDW",
+    "Yubico",
+    "ID Wholesaler",
+    "Microsoft",
+    "LexisNexis",
+    "Thomson Reuters",
+    "VWR",
+    "Fisher Scientific",
+    "MatterHackers",
+    "Grainger",
+    "Uline",
+    "Skillsoft",
+    "Vistaprint"
   ],
   "approval_over": 500,
   "department_budgets": {
-    "operations": 1000,
-    "marketing": 500,
-    "legal": 1500,
-    "security": 2500,
-    "finance and accounting": 1200,
-    "research and development": 4000,
-    "information technology": 8000,
-    "human resources": 1000
+    "operations": 15000,
+    "marketing": 25000,
+    "legal": 12000,
+    "security": 20000,
+    "finance and accounting": 8000,
+    "research and development": 40000,
+    "information technology": 60000,
+    "human resources": 10000
   },
   "reorder": {
     "printer paper": {
       "reorder_at": 10,
-      "order_qty": 5
+      "order_qty": 8
     },
     "blue pens": {
       "reorder_at": 10,

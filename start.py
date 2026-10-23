@@ -166,23 +166,55 @@ def start_decider():
     log_path = os.path.join(LOG_DIR, "decider.log")
     say("Starting Decider 2B (needs about 6 GB of free RAM). The first run downloads the model...")
     log = open(log_path, "w", encoding="utf-8")
-    command = [venv_file("strands-decider"), "serve", DECIDER_MODEL,
-               "--port", str(DECIDER_PORT), "--device", "cpu"]
-    process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, cwd=PROJECT)
+    command = [venv_file("strands-decider"), "serve", DECIDER_MODEL, "--port", str(DECIDER_PORT)]
+    # No --device: Decider picks the fastest one it finds (an NVIDIA GPU, then
+    # Apple's GPU "mps" on M-series Macs, then the CPU). DECIDER_DEVICE=cpu forces one.
+    device = os.environ.get("DECIDER_DEVICE")
+    if device:
+        command += ["--device", device]
+    # On Apple's GPU, run any operation it doesn't support on the CPU instead of failing.
+    env = dict(os.environ, PYTORCH_ENABLE_MPS_FALLBACK="1")
+    process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, cwd=PROJECT, env=env)
     wait_for_decider(process, log_path)
     return process
+
+
+# Where Hugging Face keeps downloaded models (HF_HOME moves it).
+def model_cache():
+    home = os.environ.get("HF_HOME", os.path.join(os.path.expanduser("~"), ".cache", "huggingface"))
+    return os.path.join(home, "hub")
+
+
+# Total size of the model cache in GB, including downloads still in progress.
+def cache_gb():
+    total = 0
+    for folder, _, files in os.walk(model_cache()):
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(folder, name))
+            except OSError:
+                pass
+    return total / 1024 ** 3
 
 
 def wait_for_decider(process, log_path):
     started = time.time()
     checks = 0
+    last_size = cache_gb()
     while not port_open(DECIDER_PORT):
         if process.poll() is not None:
             stop(f"Decider 2B exited during startup. See {log_path} for the reason.")
         time.sleep(5)
         checks = checks + 1
         if checks % 6 == 0:  # every 30 seconds
-            say(f"  still starting ({int(time.time() - started)}s). Progress is in {log_path}")
+            size = cache_gb()
+            waited = int(time.time() - started)
+            # A growing cache means a first-run download (the base model is about 4 GB).
+            if size > last_size + 0.01:
+                say(f"  downloading the model, one time only: {size:.1f} GB so far ({waited}s)")
+            else:
+                say(f"  loading the model ({waited}s). Details: {log_path}")
+            last_size = size
     say(f"Decider 2B is ready ({int(time.time() - started)}s)")
 
 

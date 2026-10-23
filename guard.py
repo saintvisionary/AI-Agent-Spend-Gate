@@ -28,7 +28,7 @@ import policy
 # (The same list object as in the policy, so changes show up here too.)
 ALLOWED_CATEGORIES = policy.POLICY["allowed_categories"]
 
-# Allowlist: only these vendors are approved. These are made-up names.
+# Allowlist: only these vendors are approved (real companies used as examples).
 APPROVED_VENDORS = policy.POLICY["approved_vendors"]
 
 
@@ -161,12 +161,12 @@ def show_decision(vendor, category, amount):
 # ---------------------------------------------------------------
 
 def run_demo():
-    vendor = "Northbeam Office Supply"
+    vendor = "Staples"
     show_decision(vendor, "office supplies", 86)              # normal purchase
     show_decision(vendor, "office supplies", 900)             # over $500
     show_decision(vendor, "gift cards", 200)                  # category not allowed
     show_decision("Shady Deals LLC", "office supplies", 50)   # unknown vendor
-    show_decision("northbeam office supply", "office supplies", 50)  # wrong capitalization
+    show_decision("staples", "office supplies", 50)  # wrong capitalization
     show_decision(vendor, "office supplies", 500)             # exactly the limit
     show_decision(vendor, "office supplies", 500.01)          # one cent over
     show_decision(vendor, "office supplies", 0)               # zero dollars

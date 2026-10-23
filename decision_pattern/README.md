@@ -73,7 +73,7 @@ First match wins, strongest action first:
 | `injected` ≥ `INJECTION_OVER` (0.5) | `Deny` | Call cancelled; the reason is shown to the model |
 | `item_category` confidence ≥ `LABEL_SURE` (0.6) and the category ≠ the agent's label | `Deny` | Same |
 | `grounded` < `GUESSED_UNDER` (0.3) | `Guide` | Call cancelled with feedback; the model takes another turn (usually asks the user) |
-| `goal_check` returns a problem (goal confidence ≥ `GOAL_SURE`, 0.5) | `Guide` | Same, with the reason, for example "Paperleaf Co delivers in 1 day" |
+| `goal_check` returns a problem (goal confidence ≥ `GOAL_SURE`, 0.5) | `Guide` | Same, with the reason, for example "Staples delivers in 1 day" |
 | `grounded` < `CONFIDENT_OVER` (0.6) | `Confirm` | A human answers y/n (`ask_human`, default `input()`) |
 | otherwise | `Proceed` | The tool runs |
 

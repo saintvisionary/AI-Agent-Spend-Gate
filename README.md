@@ -299,6 +299,7 @@ Other ways to run it:
 |:---|:---|:---|
 | `python test_guardrail.py` | Runs the guardrail on fixed cases, prints Decider's numbers | Decider only |
 | `python guard.py` | Runs the spending rules interactively (type `demo` for samples) | Nothing |
+| `python suggest.py sample_logs/human_decisions.csv` | Suggests standing approvals from past human decisions ([how](#suggestions-from-human-decisions)) | Nothing |
 | `$env:LLM_PROVIDER="ollama"; $env:OLLAMA_MODEL="qwen2.5:3b"; python agent.py restock` | Runs the agent on a local model instead of Bedrock | [Ollama](https://ollama.com) with `qwen2.5:3b` (follows tool steps more reliably than `llama3.2:3b`) |
 
 > [!NOTE]
@@ -485,7 +486,7 @@ Eight departments share one catalog of 15 items (all made up, in [`catalog.py`](
 - **Sixteen approved vendors, plus unapproved ones.** Amazon Business and Newegg are often cheapest but aren't on this company's approved list, so the Spend Gate blocks them.
 - **Decider's category question is built from the live policy.** Its options match the policy's category names exactly (plus "gift cards", so a cash-like item can still be named). Otherwise an honest "it hardware" order would be denied because Decider could only say "electronics".
 
-`python -m unittest discover tests` runs 32 tests of these rules (no LLM or Decider needed).
+`python -m unittest discover tests` runs 41 tests of these rules and the suggester (no LLM or Decider needed).
 
 ---
 
@@ -524,6 +525,40 @@ Buttons your role can't use are greyed out **with the reason shown**, so the per
 - **People are left out on purpose.** The roster belongs in the identity provider (for example IAM Identity Center groups), not in infrastructure code.
 
 Exports go to `exports/`, which is in `.gitignore`: audit packs contain names and decisions and should be handed over, not committed.
+
+---
+
+## Suggestions from human decisions
+
+The system learns from what people decided, and **suggests** rule changes. It never makes them. `suggest.py` reads the decision history (the hash-chained audit log), finds orders humans keep approving, and proposes a **standing approval**: a normal policy rule with a cap, which the owner can add on the Policy screen. Nothing it prints changes `policy.json`.
+
+```
+python suggest.py                                   # the app's own history
+python suggest.py sample_logs/human_decisions.csv   # fake sample history (32 rows)
+```
+
+```
+SUGGEST  information technology · Dell · it hardware: standing approval up to $999.96
+         evidence: 8 human approvals over 29 days
+HOLD     marketing · Vistaprint · advertising: only 1 approver (Kim Alvarez), needs 2 different people
+HOLD     research and development · VWR · lab supplies: humans disagree (3 approved, 3 rejected)
+HOLD     security · Yubico · security supplies: all within 0 days, needs 14
+FLAG     operations · Office Depot · printer paper: 5 orders on 2026-10-09, $2,362.05 in total, each under the $500 approval limit
+```
+
+**The memory is untrusted, so the learning is guarded.** Anything that learns from data can be taught the wrong thing (data poisoning). A suggestion needs evidence that's hard to fake:
+
+| Rule | Stops |
+|:---|:---|
+| Only **human** decisions count; orders the rules approved on their own are ignored | An attacker submitting orders to train it |
+| At least **5 approvals** for the same department, vendor and category | Suggestions from a few lucky orders |
+| From at least **2 different people** | One compromised or careless approver training it |
+| Spread over at least **14 days** | A burst of approvals in one afternoon |
+| **No human rejections** for the same thing | Learning a rule people don't agree on |
+
+It also **flags split orders**: several rule-approved orders for the same item on the same day that add up past the approval limit, each just under it, which is a classic way to dodge an approval threshold.
+
+**Separation of duties:** the suggester can read, the owner decides, and the Policy screen records the change. Every suggestion points back to the exact logged decisions behind it. `load_decisions()` is the only function that knows where the memory lives, so the CSV can become a database later without touching the rules above. With no human decisions yet, it says so instead of guessing.
 
 ---
 
@@ -760,7 +795,9 @@ The Spend Gate runs on ECS Fargate in a private subnet, loads its policy from S3
 | [`audit_chain.py`](audit_chain.py) | Tamper-evident logs: the hash chain and its verification |
 | [`audit_export.py`](audit_export.py) | Audit packs, log verification, policy as Terraform, and who may export what |
 | [`policy_admin.py`](policy_admin.py) | Who can change what, the hard limits, validation, and the change audit log |
-| [`tests/`](tests/) | 32 unit tests: policy permissions, hard limits, entitlements, catalog consistency, tamper detection, audit scope, Terraform limits |
+| [`suggest.py`](suggest.py) | Suggests standing approvals from human decision history, with poisoning and split-order checks (read only) |
+| [`sample_logs/human_decisions.csv`](sample_logs/human_decisions.csv) | Fake, hash-chained decision history for trying `suggest.py` |
+| [`tests/`](tests/) | 41 unit tests: policy permissions, hard limits, entitlements, catalog consistency, tamper detection, audit scope, Terraform limits, suggestion evidence rules |
 | [`ledger.py`](ledger.py) | Department budgets, order history, `report`, and the audit log |
 | [`decision_pattern/plain_display.py`](decision_pattern/plain_display.py) | The guardrail's default display (plain text and a progress bar) |
 | [`test_guardrail.py`](test_guardrail.py) | Runs the guardrail on 12 fixed cases against Decider, without an LLM (`--compare` for short vs full state) |

@@ -84,11 +84,18 @@ def group_human_decisions(rows):
     return groups
 
 
-# Days between the first and last approval in a group.
+# Days between the earliest and latest approval in a group.
+# Finds both by looking at every row, so an imported CSV in any order works.
 def days_covered(approvals):
-    first = datetime.strptime(approvals[0]["time"], "%Y-%m-%d %H:%M:%S")
-    last = datetime.strptime(approvals[-1]["time"], "%Y-%m-%d %H:%M:%S")
-    return (last - first).days
+    earliest = None
+    latest = None
+    for row in approvals:
+        when = datetime.strptime(row["time"], "%Y-%m-%d %H:%M:%S")
+        if earliest is None or when < earliest:
+            earliest = when
+        if latest is None or when > latest:
+            latest = when
+    return (latest - earliest).days
 
 
 # Applies the 4 safety rules. Returns (True, "") or (False, why it's held).

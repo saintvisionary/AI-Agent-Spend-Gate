@@ -56,6 +56,11 @@ class SuggestTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("needs 14", why)
 
+    def test_rows_in_any_order_count_the_same(self):
+        rows = good_history()
+        rows.reverse()
+        self.assertEqual(evidence(rows), (True, ""))
+
     def test_one_rejection_holds_it(self):
         rows = good_history() + [row("2026-10-01 09:00:00", "Tyler Bynum", suggest.HUMAN_NO)]
         ok, why = evidence(rows)
